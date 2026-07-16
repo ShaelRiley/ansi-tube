@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "ANSI Tube",
+  "version": "0.1.0",
+  "description": "Render YouTube videos as live CP437 ANSI shade/block art.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://www.youtube.com/*"],
+  "action": {
+    "default_title": "Toggle ANSI Tube"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "css": ["content.css"],
+      "js": ["core.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "toggle-ansi": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "Toggle live ANSI rendering"
+    }
+  }
+}
