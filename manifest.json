@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "ANSI Tube",
-  "version": "0.1.0",
-  "description": "Render YouTube videos as live CP437 ANSI shade/block art.",
+  "version": "0.4.0",
+  "description": "Render YouTube videos as live ANSI, ASCII, Wingdings, CJK, binary, Braille, and emoji mosaic art with retro palettes and audio effects.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": ["https://www.youtube.com/*"],
   "action": {
@@ -17,6 +17,12 @@
       "css": ["content.css"],
       "js": ["core.js", "content.js"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["audio-worklet.js"],
+      "matches": ["https://www.youtube.com/*"]
     }
   ],
   "commands": {

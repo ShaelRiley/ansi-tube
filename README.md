@@ -1,10 +1,10 @@
 # ANSI Tube
 
-ANSI Tube is a self-contained Chrome extension that renders ordinary YouTube videos as live CP437-inspired ANSI shade/block art. Video pixels stay in the browser. Audio, seeking, playback speed, captions, and YouTube's controls remain YouTube's responsibility.
+ANSI Tube is a self-contained Chrome extension that renders ordinary YouTube videos as live ANSI, ASCII, binary, Wingdings, CJK, Braille, symbol, or emoji mosaic art. Video pixels stay in the browser. Audio, seeking, playback speed, captions, and YouTube's controls remain YouTube's responsibility, with optional local retro-audio treatments.
 
 ## Install in Chrome
 
-1. Download and unzip `ansi-tube-extension.zip`.
+1. Download and unzip the current ANSI Tube release archive.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode** in the upper-right corner.
 4. Select **Load unpacked**.
@@ -17,19 +17,31 @@ The default keyboard shortcut is **Alt+Shift+A**. Chrome lets you change it at `
 
 | Preset | Grid | ANSI FPS | Palette | Intended use |
 | --- | ---: | ---: | --- | --- |
-| Potato | 80 columns | 12 | ANSI 16 | Older laptops and weak integrated graphics |
-| Balanced | 120 columns | 15 | ANSI 32 | Steam Deck and ordinary laptops |
-| Deluxe | 160 columns | 24 | Truecolor | Modern desktop hardware |
+| Potato | 80 columns | 12 | Standard, 8 colors | Older laptops and weak integrated graphics |
+| Balanced | 120 columns | 15 | Standard, 32 colors | Steam Deck and ordinary laptops |
+| Deluxe | 160 columns | 24 | Standard, True Color | Modern desktop hardware |
 
 Adaptive mode lowers ANSI frame rate first, then grid resolution, when conversion consumes most of its frame-time budget. It never changes YouTube's stream quality. For slow connections or weak video decoders, set YouTube itself to 360p or 480p.
 
 ## Controls
 
 - **Columns:** spatial resolution from 60–200 terminal columns.
+- **Rows:** selectable from 10–120, with source-aspect locking enabled by default.
 - **ANSI FPS:** conversion cadence independent from the video's frame rate.
-- **Palette:** historical ANSI 16, an expanded saturated 32-color palette, or 24-bit truecolor.
+- **Palette style:** Standard, Native Glyph, CGA, EGA, VGA, SVGA, focused monochrome treatments, old-hardware treatments, and creative palettes. Red and Virtual B use intentionally different ramps and contrast.
+- **Old hardware:** NES, SMS, Genesis, C64, Apple IIe, Apple II Mono Green, GB DMG, Virtual B, SNES, Vexi Trexi, S Zed Ex Spectral, Atari 2600, Atari 5200, and Trash 80. Each automatically applies its own color-boost, brightness, and black-floor treatment.
+- **Palette depth:** 2, 3, 4, 8, 16, 32, 64, 128, 256, or True Color.
+- **Glyph set:** Restrict ANSI, Full ANSI, Restricted ASCII, Full ASCII, Binary, Wingdings, Chinese, Japanese, Korean, Braille, Geometric Symbols, and native Emoji sets.
+- **Wingdings:** a lightweight, colorizable pictogram set using cross-platform Unicode equivalents for classic Wingdings-style symbols.
+- **Emoji color:** Native Emoji preserve the operating system font's own colors, so palette/depth controls are disabled.
 - **Color boost / Brightness / Black floor:** tune the BBS presentation.
 - **ANSI mix:** fade between the converted canvas and the original video.
+- **Wow + flutter:** optional tape-like pitch instability generated locally through the Web Audio API; off by default and persistent across videos when enabled.
+- **Bit Crush 1:** deterministic 5-bit/sample-hold processing with a soft speech gate that suppresses low-level noise between spoken passages.
+- **Bit Crush 2:** a more compact digital-radio sound using sample hold and μ-law-style companding, without injected noise.
+- **Pitch shift:** shifts the processed audio up or down by as much as four semitones without changing YouTube playback speed.
+- **Audio filter and mix:** AM Radio, Telephone, and Underwater tone filters plus dry/wet control.
+- **CRT scanlines:** optional display texture added as a lightweight compositing layer.
 - **Save PNG / Save .ANS:** export the current converted frame.
 
 ## Design and privacy
@@ -41,10 +53,12 @@ Adaptive mode lowers ANSI frame rate first, then grid resolution, when conversio
 - Uses one pixelated canvas rather than thousands of DOM text elements.
 - Stops conversion while the tab is hidden and avoids reprocessing paused frames.
 - Reuses fixed typed-array buffers for cells and rendered pixels.
+- Uses cached 15-bit color lookup tables so expanded palettes do not require a full nearest-color search for every cell and frame.
+- Uses a compact collapsed control bar so the menu obscures very little of the video; in fullscreen it fades with YouTube's native auto-hidden controls.
 
 ## Current limitation
 
-The extension reads decoded frames from YouTube's HTML video element. Ordinary YouTube playback generally exposes a browser-decodable video surface, but protected media may prohibit canvas pixel access. ANSI Tube reports that condition in its control panel. It does not circumvent DRM or protected-media restrictions.
+The extension reads decoded frames from YouTube's HTML video element. Ordinary YouTube playback generally exposes a browser-decodable video surface, but protected media may prohibit canvas pixel access. ANSI Tube reports that condition in its control panel. It does not circumvent DRM or protected-media restrictions. Emoji appearance and coverage depend on the color-emoji font installed on the operating system.
 
 ## Source layout
 
@@ -52,4 +66,5 @@ The extension reads decoded frames from YouTube's HTML video element. Ordinary Y
 - `service-worker.js`: toolbar and keyboard toggles.
 - `core.js`: deterministic pixel-to-glyph conversion and ANSI export.
 - `content.js`: YouTube integration, adaptive scheduler, UI, and frame export.
+- `audio-worklet.js`: deterministic bit crushing, speech gating, and pitch processing off the main rendering thread.
 - `content.css`: player overlay and control-panel styling.
