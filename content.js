@@ -55,7 +55,9 @@
     vectorLineReach: 4,
     vectorLineWidth: 1.25,
     vectorPointSize: 1.6,
-    vectorPoints: true
+    vectorPoints: true,
+    vectorInvert: false,
+    videoGlyphStability: 0.48
   };
 
   class AnsiTube {
@@ -218,11 +220,11 @@
         ? Core.computeGrid(this.runtimeColumns, aspect)
         : { columns: this.runtimeColumns, rows: Math.max(10, Math.min(120, Math.round(this.runtimeRows))) };
       this.runtimeRows = grid.rows;
-      const sampleScale = this.settings.glyphSet === "vectorLines"
-        ? Math.max(2, Math.min(6, Number(this.runtimeVectorSampleScale) || 4))
-        : 2;
-      this.sampleCanvas.width = grid.columns * sampleScale;
-      this.sampleCanvas.height = grid.rows * sampleScale;
+      const vectorScale = Math.max(2, Math.min(6, Number(this.runtimeVectorSampleScale) || 4));
+      const sampleWidth = this.settings.glyphSet === "vectorLines" ? vectorScale : this.settings.glyphSet === "video64" ? 4 : 2;
+      const sampleHeight = this.settings.glyphSet === "vectorLines" ? vectorScale : this.settings.glyphSet === "video64" ? 8 : 2;
+      this.sampleCanvas.width = grid.columns * sampleWidth;
+      this.sampleCanvas.height = grid.rows * sampleHeight;
       this.canvas.width = grid.columns * Core.CELL_WIDTH;
       this.canvas.height = grid.rows * Core.CELL_HEIGHT;
       this.context.imageSmoothingEnabled = false;
@@ -275,7 +277,7 @@
           this.settings,
           this.buffers
         );
-        if (this.settings.glyphSet === "restrictAnsi") this.context.putImageData(this.outputImage, 0, 0);
+        if (this.settings.glyphSet === "restrictAnsi" || this.settings.glyphSet === "video64") this.context.putImageData(this.outputImage, 0, 0);
         else if (this.settings.glyphSet === "vectorLines") this.renderVectorFrame(source.data);
         else this.renderTextFrame();
         this.recordPerformance(performance.now() - started);
@@ -338,8 +340,16 @@
         (a[0] * 0.299 + a[1] * 0.587 + a[2] * 0.114) -
         (b[0] * 0.299 + b[1] * 0.587 + b[2] * 0.114)
       );
-      const background = ordered[0];
-      const foreground = ordered[ordered.length - 1];
+      const invert = Boolean(this.settings.vectorInvert) && this.settings.colorPalette !== "nativeglyph";
+      const background = invert ? ordered[ordered.length - 1] : ordered[0];
+      const foreground = invert ? ordered[0] : ordered[ordered.length - 1];
+      const inversePalette = new Map();
+      if (invert && paletteBundle) {
+        for (let index = 0; index < ordered.length; index += 1) {
+          const color = ordered[index];
+          inversePalette.set(color[0] << 16 | color[1] << 8 | color[2], ordered[ordered.length - 1 - index]);
+        }
+      }
       const field = Core.traceVectorField(source, sampleWidth, sampleHeight, {
         detail: this.settings.vectorEdgeDetail,
         reach: this.settings.vectorLineReach,
@@ -362,9 +372,15 @@
           source[offset + 2],
           this.settings
         );
+        if (invert) {
+          const key = color[0] << 16 | color[1] << 8 | color[2];
+          color = inversePalette.get(key) || Core.invertLuminanceColor(color[0], color[1], color[2]);
+        }
         const key = color[0] << 16 | color[1] << 8 | color[2];
         if (key === backgroundKey && ordered.length > 1) {
-          color = ordered.length === 2 ? foreground : ordered[Math.ceil((ordered.length - 1) * 0.18)];
+          color = ordered.length === 2
+            ? foreground
+            : ordered[Math.round((ordered.length - 1) * (invert ? 0.45 : 0.55))];
         }
         return color;
       };
@@ -595,6 +611,7 @@
               <option value="korean">Korean</option>
               <option value="braille">Braille</option>
               <option value="geometric">Geometric Symbols</option>
+              <option value="video64">Video 64 · Homebrew</option>
               <option value="vectorLines">Vector Lines</option>
               <option value="restrictedEmoji">Restricted Emoji · Native</option>
               <option value="fullEmoji">Full Emoji · Native</option>
@@ -635,6 +652,17 @@
               <input data-setting="vectorPoints" type="checkbox">
               Draw pointillist nodes
             </label>
+            <label class="ansi-tube-row ansi-tube-check">
+              <input data-setting="vectorInvert" type="checkbox">
+              Invert light / dark
+            </label>
+          </div>
+          <div class="ansi-tube-vector-controls" data-video-glyph-controls hidden>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-video-stability">Temporal stability</label>
+              <input id="ansi-tube-video-stability" data-setting="videoGlyphStability" type="range" min="0" max="1" step="0.02">
+              <span class="ansi-tube-value" data-value="videoGlyphStability"></span>
+            </div>
           </div>
           <div class="ansi-tube-row">
             <label for="ansi-tube-color">Color boost</label>
@@ -722,19 +750,25 @@
       const glyphSet = Core.GLYPH_SETS[this.settings.glyphSet] || Core.GLYPH_SETS.restrictAnsi;
       const nativeEmoji = glyphSet.type === "emoji" && glyphSet.nativeColor;
       const vectorLines = glyphSet.type === "vector";
+      const videoGlyphs = glyphSet.type === "bitmap";
       const palette = this.panel.querySelector('[data-setting="colorPalette"]');
       const depth = this.panel.querySelector('[data-setting="paletteDepth"]');
       this.setControlDisabled(palette, nativeEmoji);
       this.setControlDisabled(depth, nativeEmoji);
-      this.setControlDisabled(this.panel.querySelector('[data-action="ans"]'), vectorLines);
+      this.setControlDisabled(this.panel.querySelector('[data-action="ans"]'), vectorLines || videoGlyphs);
+      this.setControlDisabled(this.panel.querySelector('[data-setting="vectorInvert"]'), vectorLines && this.settings.colorPalette === "nativeglyph");
       const vectorControls = this.panel.querySelector("[data-vector-controls]");
       if (vectorControls) vectorControls.hidden = !vectorLines;
+      const videoGlyphControls = this.panel.querySelector("[data-video-glyph-controls]");
+      if (videoGlyphControls) videoGlyphControls.hidden = !videoGlyphs;
       const hint = this.panel.querySelector("[data-emoji-hint]");
       if (hint) {
         const cjk = ["chinese", "japanese", "korean"].includes(this.settings.glyphSet);
-        hint.hidden = glyphSet.type !== "emoji" && !cjk && !vectorLines;
+        hint.hidden = glyphSet.type !== "emoji" && !cjk && !vectorLines && !videoGlyphs;
         hint.textContent = vectorLines
-          ? "Palette depth now controls Vector Lines from stark 2-color contours through True Color. Save PNG remains available."
+          ? `Palette depth controls Vector Lines from 2-color contours through True Color.${this.settings.colorPalette === "nativeglyph" ? " Light/dark inversion is unavailable for Native Glyph." : " Light/dark inversion reverses the palette’s tonal hierarchy."}`
+          : videoGlyphs
+            ? "An original 64-shape 8×16 atlas matches contours, masses, curves, and compact facial cues with temporal stabilization. PNG is the canonical export."
           : cjk
             ? "CJK shapes are fitted inside each ANSI cell using your installed Noto/system fonts."
             : "Native emoji keep the font’s built-in colors; palette and depth are unavailable.";
@@ -766,6 +800,7 @@
         vectorLineReach: () => String(this.settings.vectorLineReach),
         vectorLineWidth: () => Number(this.settings.vectorLineWidth).toFixed(2),
         vectorPointSize: () => Number(this.settings.vectorPointSize).toFixed(2),
+        videoGlyphStability: () => `${Math.round(this.settings.videoGlyphStability * 100)}%`,
         pitchShift: () => this.settings.pitchShift === 0 ? "Off" : `${this.settings.pitchShift > 0 ? "+" : ""}${this.settings.pitchShift} st`,
         audioMix: () => `${Math.round(this.settings.audioMix * 100)}%`
       };

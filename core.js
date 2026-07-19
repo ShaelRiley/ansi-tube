@@ -79,6 +79,87 @@
       return count(a) - count(b);
     });
 
+  // Original 8x16 video alphabet. Each byte is one bitmap row, MSB on the left.
+  // The shapes are deliberately non-typographic: occupancy, contours, junctions,
+  // curves, compact facial cues, and four temporally-gated textures.
+  const VIDEO_GLYPH_NAMES = [
+    "Void", "Center Pin", "Vertical Seed", "Horizontal Seed", "Small Disk", "Ring", "Mid Disk", "Full Block",
+    "Upper Half", "Lower Half", "Left Half", "Right Half", "Upper-Left Quarter", "Upper-Right Quarter", "Lower-Left Quarter", "Lower-Right Quarter",
+    "Center Pillar", "Center Slab", "Top Band", "Bottom Band", "Vertical Thin", "Vertical Heavy", "Horizontal Thin", "Horizontal Heavy",
+    "Rising Diagonal Thin", "Rising Diagonal Heavy", "Falling Diagonal Thin", "Falling Diagonal Heavy", "Left Edge", "Right Edge", "Top Edge", "Bottom Edge",
+    "Terminal Left", "Terminal Right", "Terminal Up", "Terminal Down", "Corner Upper Left", "Corner Upper Right", "Corner Lower Left", "Corner Lower Right",
+    "Tee Up", "Tee Down", "Tee Left", "Tee Right", "Cross", "Diagonal Cross", "Fork Up", "Fork Down",
+    "Top Arc", "Bottom Arc", "Left Arc", "Right Arc", "Smile", "Frown", "Eye Pair", "Brow Pair",
+    "Nose Mark", "Mouth Bar", "Head Dot", "Bust Silhouette", "Sparse Checker", "Dense Checker", "Vertical Hatch", "Horizontal Hatch"
+  ];
+
+  const VIDEO_GLYPH_MASKS = [
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x18,0x18,0x18,0x18,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x3c,0x3c,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x3c,0x3c,0x66,0x42,0x42,0x42,0x42,0x66,0x3c,0x3c,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x18,0x3c,0x3c,0x7e,0x7e,0x7e,0x7e,0x3c,0x3c,0x18,0x00,0x00,0x00],
+    [0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff],
+    [0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff],
+    [0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0],
+    [0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f],
+    [0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0,0xf0],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f,0x0f],
+    [0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e,0x7e],
+    [0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0x00],
+    [0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff],
+    [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18],
+    [0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c,0x3c],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x01,0x03,0x03,0x06,0x06,0x0c,0x0c,0x18,0x18,0x30,0x30,0x60,0x60,0xc0,0xc0,0x80],
+    [0x03,0x03,0x07,0x07,0x0e,0x0e,0x1c,0x1c,0x38,0x38,0x70,0x70,0xe0,0xe0,0xc0,0xc0],
+    [0x80,0xc0,0xc0,0x60,0x60,0x30,0x30,0x18,0x18,0x0c,0x0c,0x06,0x06,0x03,0x03,0x01],
+    [0xc0,0xc0,0xe0,0xe0,0x70,0x70,0x38,0x38,0x1c,0x1c,0x0e,0x0e,0x07,0x07,0x03,0x03],
+    [0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0],
+    [0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03],
+    [0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xf8,0xf8,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x1f,0x1f,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18],
+    [0xff,0xff,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0],
+    [0xff,0xff,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03],
+    [0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xff,0xff],
+    [0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0x03,0xff,0xff],
+    [0xff,0xff,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18],
+    [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0xff,0xff],
+    [0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xff,0xff,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0,0xc0],
+    [0x03,0x03,0x03,0x03,0x03,0x03,0x03,0xff,0xff,0x03,0x03,0x03,0x03,0x03,0x03,0x03],
+    [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0xff,0xff,0x18,0x18,0x18,0x18,0x18,0x18,0x18],
+    [0x81,0xc3,0xc3,0x66,0x66,0x3c,0x3c,0x18,0x18,0x3c,0x3c,0x66,0x66,0xc3,0xc3,0x81],
+    [0x00,0x81,0xc3,0x42,0x66,0x66,0x3c,0x3c,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18],
+    [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x3c,0x3c,0x66,0x66,0x42,0xc3,0x81,0x00],
+    [0x00,0x18,0x3c,0x7e,0x66,0xc3,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xc3,0x66,0x7e,0x3c,0x18,0x00],
+    [0x00,0x00,0x20,0x60,0x40,0x40,0xc0,0xc0,0xc0,0xc0,0x40,0x40,0x60,0x20,0x00,0x00],
+    [0x00,0x00,0x04,0x06,0x02,0x02,0x03,0x03,0x03,0x03,0x02,0x02,0x06,0x04,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x24,0x7e,0x3c,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x3c,0x7e,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x66,0x66,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x66,0x24,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x18,0x18,0x18,0x38,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x7e,0x7e,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x18,0x3c,0x3c,0x3c,0x3c,0x18,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+    [0x00,0x00,0x18,0x3c,0x3c,0x3c,0x18,0x00,0x3c,0x7e,0xff,0xff,0x7e,0x00,0x00,0x00],
+    [0x88,0x00,0x22,0x00,0x88,0x00,0x22,0x00,0x88,0x00,0x22,0x00,0x88,0x00,0x22,0x00],
+    [0xaa,0x55,0xaa,0x55,0xaa,0x55,0xaa,0x55,0xaa,0x55,0xaa,0x55,0xaa,0x55,0xaa,0x55],
+    [0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55,0x55],
+    [0x00,0xff,0x00,0x00,0xff,0x00,0x00,0xff,0x00,0x00,0xff,0x00,0x00,0xff,0x00,0x00]
+  ];
+
   const GLYPH_SETS = {
     restrictAnsi: { glyphs: GLYPHS, type: "ansi" },
     fullAnsi: { glyphs: FULL_ANSI, type: "ansi" },
@@ -91,6 +172,7 @@
     korean: { glyphs: KOREAN, type: "text" },
     braille: { glyphs: BRAILLE, type: "text" },
     geometric: { glyphs: GEOMETRIC, type: "text" },
+    video64: { glyphs: VIDEO_GLYPH_NAMES, masks: VIDEO_GLYPH_MASKS, type: "bitmap" },
     vectorLines: { glyphs: [""], type: "vector" },
     restrictedEmoji: { glyphs: RESTRICTED_EMOJI.map((entry) => entry[0]), colors: RESTRICTED_EMOJI, type: "emoji", nativeColor: true },
     fullEmoji: { glyphs: FULL_EMOJI.map((entry) => entry[0]), colors: FULL_EMOJI, type: "emoji", nativeColor: true }
@@ -163,8 +245,134 @@
     15, 7, 13, 5
   ];
 
+  const DISPERSED_4X4 = [
+    0, 11, 4, 15,
+    8, 3, 12, 7,
+    2, 13, 6, 9,
+    14, 5, 10, 1
+  ];
+
+  const POPCOUNT_8 = new Uint8Array(256);
+  for (let value = 1; value < POPCOUNT_8.length; value += 1) {
+    POPCOUNT_8[value] = POPCOUNT_8[value >> 1] + (value & 1);
+  }
+
   function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
+  }
+
+  function popcount32(value) {
+    const unsigned = value >>> 0;
+    return POPCOUNT_8[unsigned & 255] + POPCOUNT_8[unsigned >>> 8 & 255] +
+      POPCOUNT_8[unsigned >>> 16 & 255] + POPCOUNT_8[unsigned >>> 24 & 255];
+  }
+
+  function orientationHistogram(values, histogram = new Float32Array(4)) {
+    histogram.fill(0);
+    let total = 0;
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 4; x += 1) {
+        const left = values[y * 4 + Math.max(0, x - 1)];
+        const right = values[y * 4 + Math.min(3, x + 1)];
+        const top = values[Math.max(0, y - 1) * 4 + x];
+        const bottom = values[Math.min(7, y + 1) * 4 + x];
+        const gx = right - left;
+        const gy = bottom - top;
+        const magnitude = Math.hypot(gx, gy);
+        if (magnitude < 0.01) continue;
+        let angle = Math.atan2(gy, gx);
+        if (angle < 0) angle += Math.PI;
+        if (angle >= Math.PI) angle -= Math.PI;
+        histogram[Math.round(angle / (Math.PI / 4)) & 3] += magnitude;
+        total += magnitude;
+      }
+    }
+    if (total > 0) for (let index = 0; index < 4; index += 1) histogram[index] /= total;
+    return histogram;
+  }
+
+  function buildVideoGlyphFeature(mask) {
+    const coverage = new Float32Array(32);
+    const occupancy = new Float32Array(8);
+    let binaryMask = 0;
+    let filled = 0;
+    let weightedX = 0;
+    let weightedY = 0;
+    for (let y = 0; y < CELL_HEIGHT; y += 1) {
+      const row = mask[y];
+      for (let x = 0; x < CELL_WIDTH; x += 1) {
+        if (!(row & (0x80 >> x))) continue;
+        filled += 1;
+        weightedX += x;
+        weightedY += y;
+      }
+    }
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 4; x += 1) {
+        let count = 0;
+        for (let oy = 0; oy < 2; oy += 1) {
+          const row = mask[y * 2 + oy];
+          for (let ox = 0; ox < 2; ox += 1) count += Boolean(row & (0x80 >> (x * 2 + ox)));
+        }
+        const index = y * 4 + x;
+        coverage[index] = count / 4;
+        if (count > 0) binaryMask = (binaryMask | (1 << index)) >>> 0;
+        occupancy[(y >> 1) * 2 + (x >> 1)] += coverage[index] * 0.25;
+      }
+    }
+    return {
+      coverage,
+      binaryMask,
+      area: filled / (CELL_WIDTH * CELL_HEIGHT),
+      centroidX: filled ? weightedX / filled / (CELL_WIDTH - 1) : 0.5,
+      centroidY: filled ? weightedY / filled / (CELL_HEIGHT - 1) : 0.5,
+      occupancy,
+      orientation: orientationHistogram(coverage)
+    };
+  }
+
+  const VIDEO_GLYPH_FEATURES = VIDEO_GLYPH_MASKS.map(buildVideoGlyphFeature);
+
+  function fillTargetFeatures(mask, target) {
+    const values = target.values;
+    const occupancy = target.occupancy;
+    values.fill(0);
+    occupancy.fill(0);
+    let count = 0;
+    let weightedX = 0;
+    let weightedY = 0;
+    for (let index = 0; index < 32; index += 1) {
+      const lit = (mask >>> index) & 1;
+      values[index] = lit;
+      if (!lit) continue;
+      const x = index & 3;
+      const y = index >> 2;
+      count += 1;
+      weightedX += x;
+      weightedY += y;
+      occupancy[(y >> 1) * 2 + (x >> 1)] += 0.25;
+    }
+    target.mask = mask >>> 0;
+    target.area = count / 32;
+    target.centroidX = count ? weightedX / count / 3 : 0.5;
+    target.centroidY = count ? weightedY / count / 7 : 0.5;
+    orientationHistogram(values, target.orientation);
+    return target;
+  }
+
+  function createTargetFeatures() {
+    return { mask: 0, area: 0, centroidX: 0.5, centroidY: 0.5, values: new Float32Array(32), occupancy: new Float32Array(8), orientation: new Float32Array(4) };
+  }
+
+  function scoreVideoGlyph(target, glyphIndex) {
+    const glyph = VIDEO_GLYPH_FEATURES[glyphIndex];
+    let occupancyError = 0;
+    let orientationError = 0;
+    for (let index = 0; index < 8; index += 1) occupancyError += Math.abs(target.occupancy[index] - glyph.occupancy[index]);
+    for (let index = 0; index < 4; index += 1) orientationError += Math.abs(target.orientation[index] - glyph.orientation[index]);
+    const hamming = popcount32((target.mask ^ glyph.binaryMask) >>> 0) / 32;
+    const centroid = Math.abs(target.centroidX - glyph.centroidX) + Math.abs(target.centroidY - glyph.centroidY);
+    return hamming * 3.2 + Math.abs(target.area - glyph.area) * 1.4 + occupancyError * 0.30 + centroid * 0.70 + orientationError * 0.55;
   }
 
   function computeGrid(columns, aspectRatio) {
@@ -324,6 +532,10 @@
       rows,
       glyphs: new Uint16Array(count),
       colors: new Uint8ClampedArray(count * 3),
+      backgrounds: new Uint8ClampedArray(count * 3),
+      scores: new Float32Array(count),
+      polarities: new Uint8Array(count),
+      history: new Uint8Array(count),
       image: new Uint8ClampedArray(columns * CELL_WIDTH * rows * CELL_HEIGHT * 4)
     };
   }
@@ -602,6 +814,19 @@
     return [colorR, colorG, colorB];
   }
 
+  function invertLuminanceColor(r, g, b) {
+    const color = [clamp(Number(r) || 0, 0, 255), clamp(Number(g) || 0, 0, 255), clamp(Number(b) || 0, 0, 255)];
+    const luminance = color[0] * 0.299 + color[1] * 0.587 + color[2] * 0.114;
+    const target = 255 - luminance;
+    if (Math.abs(target - luminance) < 0.5) return color.map(Math.round);
+    if (target < luminance) {
+      const scale = target / Math.max(1, luminance);
+      return color.map((channel) => Math.round(clamp(channel * scale, 0, 255)));
+    }
+    const scale = (255 - target) / Math.max(1, 255 - luminance);
+    return color.map((channel) => Math.round(clamp(255 - (255 - channel) * scale, 0, 255)));
+  }
+
   function chooseGlyph(e0, e1, e2, e3, thresholds) {
     const top = (e0 + e1) * 0.5;
     const bottom = (e2 + e3) * 0.5;
@@ -683,6 +908,172 @@
     }
   }
 
+  function convertVideoGlyphsInto(source, width, height, settings, buffers) {
+    const columns = buffers.columns;
+    const rows = buffers.rows;
+    const outWidth = columns * CELL_WIDTH;
+    const style = settings.colorPalette || "standard";
+    const depth = settings.paletteDepth ?? 32;
+    const stability = clamp(Number(settings.videoGlyphStability ?? 0.48), 0, 1);
+    const luma = new Float32Array(32);
+    const offsets = new Int32Array(32);
+    const brightTarget = createTargetFeatures();
+    const darkTarget = createTargetFeatures();
+
+    const keepPreviousColor = (next, previous, history) => {
+      if (!history) return next;
+      const dr = next[0] - previous[0];
+      const dg = next[1] - previous[1];
+      const db = next[2] - previous[2];
+      const threshold = 7 + stability * 17;
+      return dr * dr + dg * dg + db * db <= threshold * threshold ? previous : next;
+    };
+
+    for (let cy = 0; cy < rows; cy += 1) {
+      for (let cx = 0; cx < columns; cx += 1) {
+        let sumLuma = 0;
+        let minimum = 255;
+        let maximum = 0;
+        let sumR = 0;
+        let sumG = 0;
+        let sumB = 0;
+        for (let sy = 0; sy < 8; sy += 1) {
+          const sourceY = clamp(Math.floor((cy * 8 + sy + 0.5) * height / (rows * 8)), 0, height - 1);
+          for (let sx = 0; sx < 4; sx += 1) {
+            const sourceX = clamp(Math.floor((cx * 4 + sx + 0.5) * width / (columns * 4)), 0, width - 1);
+            const index = sy * 4 + sx;
+            const offset = (sourceY * width + sourceX) * 4;
+            const r = source[offset];
+            const g = source[offset + 1];
+            const b = source[offset + 2];
+            const value = r * 0.2126 + g * 0.7152 + b * 0.0722;
+            offsets[index] = offset;
+            luma[index] = value;
+            sumLuma += value;
+            minimum = Math.min(minimum, value);
+            maximum = Math.max(maximum, value);
+            sumR += r;
+            sumG += g;
+            sumB += b;
+          }
+        }
+
+        const cellIndex = cy * columns + cx;
+        const colorOffset = cellIndex * 3;
+        const hadHistory = buffers.history[cellIndex] === 1;
+        let glyphIndex = 7;
+        let polarity = 0;
+        let bestScore = 0;
+        let foregroundRaw = [sumR / 32, sumG / 32, sumB / 32];
+        let backgroundRaw = foregroundRaw;
+
+        if (maximum - minimum >= 7) {
+          const threshold = sumLuma / 32;
+          let brightMask = 0;
+          let brightCount = 0;
+          let darkCount = 0;
+          let brightR = 0;
+          let brightG = 0;
+          let brightB = 0;
+          let darkR = 0;
+          let darkG = 0;
+          let darkB = 0;
+          for (let index = 0; index < 32; index += 1) {
+            const offset = offsets[index];
+            if (luma[index] >= threshold) {
+              brightMask = (brightMask | (1 << index)) >>> 0;
+              brightCount += 1;
+              brightR += source[offset];
+              brightG += source[offset + 1];
+              brightB += source[offset + 2];
+            } else {
+              darkCount += 1;
+              darkR += source[offset];
+              darkG += source[offset + 1];
+              darkB += source[offset + 2];
+            }
+          }
+          const darkMask = (~brightMask) >>> 0;
+          fillTargetFeatures(brightMask, brightTarget);
+          fillTargetFeatures(darkMask, darkTarget);
+          bestScore = Infinity;
+          for (let candidate = 0; candidate < VIDEO_GLYPH_MASKS.length; candidate += 1) {
+            const brightScore = scoreVideoGlyph(brightTarget, candidate);
+            if (brightScore < bestScore) {
+              bestScore = brightScore;
+              glyphIndex = candidate;
+              polarity = 0;
+            }
+            const darkScore = scoreVideoGlyph(darkTarget, candidate);
+            if (darkScore < bestScore) {
+              bestScore = darkScore;
+              glyphIndex = candidate;
+              polarity = 1;
+            }
+          }
+
+          if (hadHistory) {
+            const previousGlyph = buffers.glyphs[cellIndex];
+            const previousPolarity = buffers.polarities[cellIndex];
+            const previousTarget = previousPolarity ? darkTarget : brightTarget;
+            const previousScore = scoreVideoGlyph(previousTarget, previousGlyph);
+            const keepMargin = 0.06 + stability * 0.34;
+            const enteringTexture = glyphIndex >= 60 && previousGlyph !== glyphIndex;
+            const textureMargin = 0.22 + stability * 0.36;
+            if (previousScore <= bestScore + keepMargin || (enteringTexture && previousScore <= bestScore + textureMargin)) {
+              glyphIndex = previousGlyph;
+              polarity = previousPolarity;
+              bestScore = previousScore;
+            }
+          }
+
+          const highColor = [brightR / Math.max(1, brightCount), brightG / Math.max(1, brightCount), brightB / Math.max(1, brightCount)];
+          const lowColor = [darkR / Math.max(1, darkCount), darkG / Math.max(1, darkCount), darkB / Math.max(1, darkCount)];
+          foregroundRaw = polarity ? lowColor : highColor;
+          backgroundRaw = polarity ? highColor : lowColor;
+        }
+
+        const numericDepth = Number(depth);
+        const ditherStrength = Number.isFinite(numericDepth) && numericDepth <= 16
+          ? (DISPERSED_4X4[(cy & 3) * 4 + (cx & 3)] / 15 - 0.5) * 12
+          : 0;
+        let foreground = quantizeColor(style, depth,
+          foregroundRaw[0] + ditherStrength, foregroundRaw[1] + ditherStrength, foregroundRaw[2] + ditherStrength, settings);
+        let background = quantizeColor(style, depth,
+          backgroundRaw[0] - ditherStrength, backgroundRaw[1] - ditherStrength, backgroundRaw[2] - ditherStrength, settings);
+        if (hadHistory) {
+          foreground = keepPreviousColor(foreground, [buffers.colors[colorOffset], buffers.colors[colorOffset + 1], buffers.colors[colorOffset + 2]], true);
+          background = keepPreviousColor(background, [buffers.backgrounds[colorOffset], buffers.backgrounds[colorOffset + 1], buffers.backgrounds[colorOffset + 2]], true);
+        }
+
+        buffers.glyphs[cellIndex] = glyphIndex;
+        buffers.polarities[cellIndex] = polarity;
+        buffers.scores[cellIndex] = bestScore;
+        buffers.history[cellIndex] = 1;
+        buffers.colors[colorOffset] = foreground[0];
+        buffers.colors[colorOffset + 1] = foreground[1];
+        buffers.colors[colorOffset + 2] = foreground[2];
+        buffers.backgrounds[colorOffset] = background[0];
+        buffers.backgrounds[colorOffset + 1] = background[1];
+        buffers.backgrounds[colorOffset + 2] = background[2];
+
+        const mask = VIDEO_GLYPH_MASKS[glyphIndex];
+        for (let py = 0; py < CELL_HEIGHT; py += 1) {
+          const rowMask = mask[py];
+          for (let px = 0; px < CELL_WIDTH; px += 1) {
+            const outputOffset = ((cy * CELL_HEIGHT + py) * outWidth + cx * CELL_WIDTH + px) * 4;
+            const color = rowMask & (0x80 >> px) ? foreground : background;
+            buffers.image[outputOffset] = color[0];
+            buffers.image[outputOffset + 1] = color[1];
+            buffers.image[outputOffset + 2] = color[2];
+            buffers.image[outputOffset + 3] = 255;
+          }
+        }
+      }
+    }
+    return buffers;
+  }
+
   function convertInto(source, width, height, settings, buffers) {
     const saturationBoost = Number(settings.saturationBoost ?? 0.42);
     const brightnessBoost = Number(settings.brightnessBoost ?? 0.17);
@@ -695,6 +1086,7 @@
     const glyphSet = settings.glyphSet || "restrictAnsi";
     const paletteDepth = settings.paletteDepth || (legacyPalette === "ansi16" ? 16 : legacyPalette === "truecolor" ? "truecolor" : 32);
     const glyphDefinition = GLYPH_SETS[glyphSet] || GLYPH_SETS.restrictAnsi;
+    if (glyphDefinition.type === "bitmap") return convertVideoGlyphsInto(source, width, height, settings, buffers);
     const paletteBundle = glyphDefinition.type === "emoji" && glyphDefinition.nativeColor
       ? null
       : getPaletteBundle(colorPalette, paletteDepth);
@@ -823,6 +1215,8 @@
     CELL_HEIGHT,
     ANSI_16,
     ANSI_32,
+    VIDEO_GLYPH_NAMES,
+    VIDEO_GLYPH_MASKS,
     GLYPH_SETS,
     PALETTE_DEPTHS,
     computeGrid,
@@ -831,6 +1225,7 @@
     createBuffers,
     getPaletteBundle,
     quantizeColor,
+    invertLuminanceColor,
     getGlyph,
     convertInto,
     buildAns

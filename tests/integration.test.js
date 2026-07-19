@@ -6,7 +6,7 @@ const Core = require("../core.js");
 const root = path.join(__dirname, "..");
 const content = fs.readFileSync(path.join(root, "content.js"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "manifest.json"), "utf8"));
-assert.equal(manifest.version, "0.6.0");
+assert.equal(manifest.version, "0.7.0");
 
 for (const resource of [
   ...manifest.content_scripts.flatMap((entry) => [...entry.js, ...entry.css]),
@@ -37,6 +37,7 @@ for (const retired of ["teal", "phosphor", "nightvision", "apple2"]) {
 const glyphOptions = optionValues("ansi-tube-glyphs");
 assert(glyphOptions.includes("wingdings"), "Wingdings should appear in the glyph menu");
 assert(glyphOptions.includes("vectorLines"), "Vector Lines should appear in the glyph menu");
+assert(glyphOptions.includes("video64"), "Video 64 should appear in the glyph menu");
 for (const depth of ["6", "12", "24", "48", "96"]) {
   assert(optionValues("ansi-tube-depth").includes(depth), `${depth}-color depth should appear in the menu`);
 }
@@ -55,6 +56,11 @@ assert(content.includes('data-setting="vectorLineReach"'), "Vector line reach sh
 assert(content.includes('data-setting="vectorLineWidth"'), "Vector line width should be adjustable");
 assert(content.includes('data-setting="vectorPointSize"'), "Vector point size should be adjustable");
 assert(content.includes('data-setting="vectorPoints"'), "Vector point nodes should be toggleable");
+assert(content.includes('data-setting="vectorInvert"'), "Vector light/dark balance should be invertible");
+assert(content.includes("Core.invertLuminanceColor"), "True-color vector inversion should preserve color relationships");
+assert(content.includes('data-setting="videoGlyphStability"'), "Video 64 temporal stability should be adjustable");
+assert(content.includes('this.settings.glyphSet === "video64" ? 4 : 2'), "Video 64 should use four horizontal analysis samples per cell");
+assert(content.includes('this.settings.glyphSet === "video64" ? 8 : 2'), "Video 64 should use eight vertical analysis samples per cell");
 assert(!content.includes("setControlDisabled(depth, nativeEmoji || vectorLines)"), "Vector mode should leave palette depth available");
 
 console.log("ANSI Tube integration tests passed.");

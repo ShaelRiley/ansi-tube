@@ -58,6 +58,11 @@ assert(Core.GLYPH_SETS.japanese.glyphs.length > 100);
 assert(Core.GLYPH_SETS.korean.glyphs.length > 100);
 assert.equal(Core.GLYPH_SETS.braille.glyphs.length, 256);
 assert.equal(Core.GLYPH_SETS.vectorLines.type, "vector");
+assert.equal(Core.GLYPH_SETS.video64.type, "bitmap");
+assert.equal(Core.VIDEO_GLYPH_NAMES.length, 64);
+assert.equal(Core.VIDEO_GLYPH_MASKS.length, 64);
+assert(Core.VIDEO_GLYPH_MASKS.every((mask) => mask.length === 16));
+assert.equal(new Set(Core.VIDEO_GLYPH_MASKS.map((mask) => mask.join(","))).size, 64, "Every homebrew glyph should be distinct");
 assert.equal(Core.GLYPH_SETS.restrictedEmoji.nativeColor, true);
 assert.equal(Core.GLYPH_SETS.restrictedEmojiTinted, undefined);
 assert.equal(Core.GLYPH_SETS.fullEmojiTinted, undefined);
@@ -94,6 +99,32 @@ assert.notDeepEqual(
   Core.quantizeColor("standard", 24, 106, 83, 212),
   "Point-level vector color should honor palette depth"
 );
+
+const verticalSplit = new Uint8ClampedArray(4 * 8 * 4);
+for (let y = 0; y < 8; y += 1) {
+  for (let x = 0; x < 4; x += 1) {
+    const offset = (y * 4 + x) * 4;
+    const value = x < 2 ? 0 : 255;
+    verticalSplit[offset] = value;
+    verticalSplit[offset + 1] = value;
+    verticalSplit[offset + 2] = value;
+    verticalSplit[offset + 3] = 255;
+  }
+}
+const videoGlyphCell = Core.createBuffers(1, 1);
+Core.convertInto(verticalSplit, 4, 8, {
+  glyphSet: "video64",
+  colorPalette: "blackwhite",
+  paletteDepth: 2,
+  videoGlyphStability: 0
+}, videoGlyphCell);
+assert([10, 11].includes(videoGlyphCell.glyphs[0]), "A vertical split should select a half-cell mask");
+const videoRow = [...videoGlyphCell.image.slice(0, Core.CELL_WIDTH * 4)].filter((_, index) => index % 4 !== 3);
+assert(videoRow.slice(0, 12).every((value) => value === 0), "Dark half should remain dark");
+assert(videoRow.slice(12).every((value) => value === 255), "Light half should remain light");
+
+assert.deepEqual(Core.invertLuminanceColor(0, 0, 0), [255, 255, 255]);
+assert.deepEqual(Core.invertLuminanceColor(255, 255, 255), [0, 0, 0]);
 
 const edgeSource = new Uint8ClampedArray(16 * 16 * 4);
 for (let y = 0; y < 16; y += 1) {

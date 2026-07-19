@@ -1,6 +1,6 @@
 # ANSI Tube
 
-ANSI Tube is a self-contained Chrome extension that renders ordinary YouTube videos as live ANSI, ASCII, binary, Wingdings, CJK, Braille, symbol, emoji mosaic, or multitone vector-line art. Video pixels stay in the browser. Audio, seeking, playback speed, captions, and YouTube's controls remain YouTube's responsibility, with optional local retro-audio treatments.
+ANSI Tube is a self-contained Chrome extension that renders ordinary YouTube videos as live ANSI, ASCII, an original 64-shape video alphabet, binary, Wingdings, CJK, Braille, symbol, emoji mosaic, or multitone vector-line art. Video pixels stay in the browser. Audio, seeking, playback speed, captions, and YouTube's controls remain YouTube's responsibility, with optional local retro-audio treatments.
 
 ## Install in Chrome
 
@@ -32,8 +32,11 @@ Adaptive mode lowers Vector sampling first when applicable, then ANSI frame rate
 - **Palette style:** Standard, Native Glyph, CGA, EGA, VGA, SVGA, focused monochrome treatments, old-hardware treatments, and creative palettes. Red and Virtual B use intentionally different ramps and contrast.
 - **Old hardware:** NES, SMS, Genesis, C64, Apple IIe, Apple II Mono Green, GB DMG, Virtual B, SNES, Vexi Trexi, S Zed Ex Spectral, Atari 2600, Atari 5200, and Trash 80. Each automatically applies its own color-boost, brightness, and black-floor treatment.
 - **Palette depth:** 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256, or True Color.
-- **Glyph set:** Restrict ANSI, Full ANSI, Restricted ASCII, Full ASCII, Binary, Wingdings, Chinese, Japanese, Korean, Braille, Geometric Symbols, native Emoji sets, and Vector Lines.
+- **Glyph set:** Restrict ANSI, Full ANSI, Restricted ASCII, Full ASCII, Video 64 Homebrew, Binary, Wingdings, Chinese, Japanese, Korean, Braille, Geometric Symbols, native Emoji sets, and Vector Lines.
+- **Video 64 · Homebrew:** an original deterministic 8×16 bitmap alphabet optimized for moving images. Its 64 shapes cover masses, partial cells, contours, diagonals, terminals, junctions, curves, compact facial cues, and a small temporally gated texture family. A 4×8 proxy per output cell drives structure-aware matching while independent foreground/background colors preserve local tone and edge polarity.
+- **Temporal stability:** Video 64 keeps a previous glyph when the new match is only marginally better, applies a stronger entry threshold to high-frequency texture shapes, and suppresses small palette oscillations. The control ranges from immediate response to steadier motion.
 - **Vector Lines:** a palette-aware point-and-segment renderer built from the same sampled frame and quantization pipeline. Palette Depth ranges from stark two-tone contours through True Color.
+- **Vector light/dark inversion:** reverses each applicable palette's tonal hierarchy for dark vectors on a light background. True Color uses a hue-preserving luminance reversal; Native Glyph is excluded because it has no coherent palette hierarchy to reverse.
 - **Vector sampling:** Fast 2×, Detailed 3×, High 4×, or Ultra 6× source sampling. Higher settings improve contour fidelity at additional processing cost.
 - **Vector shaping:** Edge Detail governs feature sensitivity; Line Reach controls contour continuity; Line Width and Point Size control presentation; pointillist nodes can be hidden for a purer wireframe.
 - **Wingdings:** a lightweight, colorizable pictogram set using cross-platform Unicode equivalents for classic Wingdings-style symbols.
@@ -46,14 +49,14 @@ Adaptive mode lowers Vector sampling first when applicable, then ANSI frame rate
 - **Pitch shift:** shifts the processed audio up or down by as much as four semitones without changing YouTube playback speed.
 - **Audio filter and mix:** AM Radio, Telephone, and Underwater tone filters plus dry/wet control.
 - **CRT scanlines:** optional display texture added as a lightweight compositing layer.
-- **Save PNG / Save .ANS:** export the current converted frame. Vector Lines supports PNG rather than text-based `.ANS` export.
+- **Save PNG / Save .ANS:** export the current converted frame. Vector Lines and Video 64 use PNG because ordinary ANSI terminals cannot reproduce their custom geometry faithfully.
 
 ## Design and privacy
 
 - Manifest V3.
 - Only runs on `youtube.com`.
 - No analytics, servers, accounts, remote fonts, or external code.
-- Samples a tiny proxy frame: normally `columns × 2` by `rows × 2` pixels, with selectable 2×–6× sampling for Vector Lines.
+- Samples a tiny proxy frame: normally `columns × 2` by `rows × 2` pixels, `columns × 4` by `rows × 8` for Video 64, and selectable 2×–6× sampling for Vector Lines.
 - Uses one pixelated canvas rather than thousands of DOM text elements.
 - Stops conversion while the tab is hidden and avoids reprocessing paused frames.
 - Reuses fixed typed-array buffers for cells and rendered pixels.
@@ -68,7 +71,7 @@ The extension reads decoded frames from YouTube's HTML video element. Ordinary Y
 
 - `manifest.json`: extension declaration and YouTube scope.
 - `service-worker.js`: toolbar and keyboard toggles.
-- `core.js`: deterministic pixel-to-glyph conversion, palette quantization, Sobel/vector contour tracing, 4:3 source geometry, and ANSI export.
+- `core.js`: deterministic pixel-to-glyph conversion, the packed 64-glyph video atlas and matcher, palette quantization, Sobel/vector contour tracing, 4:3 source geometry, and ANSI export.
 - `content.js`: YouTube integration, adaptive scheduler, multitone vector rendering, UI, and frame export.
 - `audio-worklet.js`: deterministic bit crushing, speech gating, and pitch processing off the main rendering thread.
 - `content.css`: player overlay and control-panel styling.
