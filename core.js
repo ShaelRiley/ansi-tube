@@ -91,6 +91,7 @@
     korean: { glyphs: KOREAN, type: "text" },
     braille: { glyphs: BRAILLE, type: "text" },
     geometric: { glyphs: GEOMETRIC, type: "text" },
+    vectorLines: { glyphs: [""], type: "vector" },
     restrictedEmoji: { glyphs: RESTRICTED_EMOJI.map((entry) => entry[0]), colors: RESTRICTED_EMOJI, type: "emoji", nativeColor: true },
     fullEmoji: { glyphs: FULL_EMOJI.map((entry) => entry[0]), colors: FULL_EMOJI, type: "emoji", nativeColor: true }
   };
@@ -152,7 +153,7 @@
     hyperreal: paletteFromHex(["#000000", "#ffffff", "#ff1f2d", "#ff7a00", "#ffe100", "#17d45b", "#00d6d9", "#1677ff", "#7a2cff", "#ff21a8", "#7b4b2a", "#f0c8a0"])
   };
 
-  const PALETTE_DEPTHS = [2, 3, 4, 8, 16, 32, 64, 128, 256];
+  const PALETTE_DEPTHS = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 256];
   const paletteCache = new Map();
 
   const BAYER_4X4 = [
@@ -173,6 +174,147 @@
       columns: safeColumns,
       rows: Math.max(1, Math.round(safeColumns / safeAspect / 2))
     };
+  }
+
+  function computeSourceRect(width, height, targetAspectRatio, zoom = 1) {
+    const safeWidth = Math.max(1, Number(width) || 1);
+    const safeHeight = Math.max(1, Number(height) || 1);
+    const sourceAspect = safeWidth / safeHeight;
+    const targetAspect = Number.isFinite(targetAspectRatio) && targetAspectRatio > 0
+      ? targetAspectRatio
+      : sourceAspect;
+    let cropWidth = safeWidth;
+    let cropHeight = safeHeight;
+
+    if (sourceAspect > targetAspect) cropWidth = safeHeight * targetAspect;
+    else if (sourceAspect < targetAspect) cropHeight = safeWidth / targetAspect;
+
+    const safeZoom = clamp(Number(zoom) || 1, 1, 4);
+    cropWidth /= safeZoom;
+    cropHeight /= safeZoom;
+    return {
+      x: (safeWidth - cropWidth) / 2,
+      y: (safeHeight - cropHeight) / 2,
+      width: cropWidth,
+      height: cropHeight
+    };
+  }
+
+  function traceVectorField(source, width, height, settings = {}) {
+    const safeWidth = Math.max(3, Math.round(width));
+    const safeHeight = Math.max(3, Math.round(height));
+    const pixelCount = safeWidth * safeHeight;
+    const detail = clamp(Number(settings.detail ?? 0.62), 0, 1);
+    const reach = clamp(Math.round(Number(settings.reach) || 4), 1, 10);
+    const luminance = new Float32Array(pixelCount);
+    const gradientX = new Float32Array(pixelCount);
+    const gradientY = new Float32Array(pixelCount);
+    const magnitude = new Float32Array(pixelCount);
+
+    for (let index = 0; index < pixelCount; index += 1) {
+      const offset = index * 4;
+      luminance[index] = source[offset] * 0.299 + source[offset + 1] * 0.587 + source[offset + 2] * 0.114;
+    }
+
+    for (let y = 1; y < safeHeight - 1; y += 1) {
+      for (let x = 1; x < safeWidth - 1; x += 1) {
+        const index = y * safeWidth + x;
+        const topLeft = luminance[index - safeWidth - 1];
+        const top = luminance[index - safeWidth];
+        const topRight = luminance[index - safeWidth + 1];
+        const left = luminance[index - 1];
+        const right = luminance[index + 1];
+        const bottomLeft = luminance[index + safeWidth - 1];
+        const bottom = luminance[index + safeWidth];
+        const bottomRight = luminance[index + safeWidth + 1];
+        const gx = -topLeft - 2 * left - bottomLeft + topRight + 2 * right + bottomRight;
+        const gy = -topLeft - 2 * top - topRight + bottomLeft + 2 * bottom + bottomRight;
+        gradientX[index] = gx;
+        gradientY[index] = gy;
+        magnitude[index] = Math.hypot(gx, gy) * 0.25;
+      }
+    }
+
+    const pointAt = new Int32Array(pixelCount);
+    pointAt.fill(-1);
+    const points = [];
+    const edgeFloor = 56 - detail * 42;
+    const lightFloor = Math.max(72, Number(settings.blackThreshold ?? 0.035) * 1020);
+    const stippleModulo = Math.max(9, Math.round(25 - detail * 14));
+
+    for (let y = 1; y < safeHeight - 1; y += 1) {
+      for (let x = 1; x < safeWidth - 1; x += 1) {
+        const index = y * safeWidth + x;
+        const strength = magnitude[index];
+        const gx = gradientX[index];
+        const gy = gradientY[index];
+        const absX = Math.abs(gx);
+        const absY = Math.abs(gy);
+        let before;
+        let after;
+        if (absX > absY * 1.8) {
+          before = magnitude[index - 1];
+          after = magnitude[index + 1];
+        } else if (absY > absX * 1.8) {
+          before = magnitude[index - safeWidth];
+          after = magnitude[index + safeWidth];
+        } else if (gx * gy >= 0) {
+          before = magnitude[index - safeWidth - 1];
+          after = magnitude[index + safeWidth + 1];
+        } else {
+          before = magnitude[index - safeWidth + 1];
+          after = magnitude[index + safeWidth - 1];
+        }
+        const edgePoint = strength >= edgeFloor && strength >= before && strength >= after;
+        const stipplePoint = settings.points !== false && luminance[index] > lightFloor &&
+          ((x * 17 + y * 31) % stippleModulo === 0);
+        if (!edgePoint && !stipplePoint) continue;
+
+        const gradientLength = Math.hypot(gx, gy);
+        let tangentX = gradientLength > 0 ? -gy / gradientLength : 1;
+        let tangentY = gradientLength > 0 ? gx / gradientLength : 0;
+        if (tangentX < 0 || (tangentX === 0 && tangentY < 0)) {
+          tangentX *= -1;
+          tangentY *= -1;
+        }
+        pointAt[index] = points.length;
+        points.push({ x, y, strength, tangentX, tangentY, sampleIndex: index });
+      }
+    }
+
+    const segments = [];
+    for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
+      const point = points[pointIndex];
+      let bestIndex = -1;
+      let bestScore = Infinity;
+      for (let step = 1; step <= reach; step += 1) {
+        const targetX = Math.round(point.x + point.tangentX * step);
+        const targetY = Math.round(point.y + point.tangentY * step);
+        for (let oy = -1; oy <= 1; oy += 1) {
+          for (let ox = -1; ox <= 1; ox += 1) {
+            const candidateX = targetX + ox;
+            const candidateY = targetY + oy;
+            if (candidateX <= 0 || candidateX >= safeWidth - 1 || candidateY <= 0 || candidateY >= safeHeight - 1) continue;
+            const candidateIndex = pointAt[candidateY * safeWidth + candidateX];
+            if (candidateIndex < 0 || candidateIndex === pointIndex) continue;
+            const candidate = points[candidateIndex];
+            const dx = candidate.x - point.x;
+            const dy = candidate.y - point.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > reach + 1.5) continue;
+            const directionAlignment = (dx * point.tangentX + dy * point.tangentY) / distance;
+            const tangentAlignment = Math.abs(point.tangentX * candidate.tangentX + point.tangentY * candidate.tangentY);
+            if (directionAlignment < 0.38 || tangentAlignment < 0.35) continue;
+            const score = distance + (1 - directionAlignment) * 4 + (1 - tangentAlignment) * 2 - candidate.strength * 0.004;
+            if (score < bestScore) { bestIndex = candidateIndex; bestScore = score; }
+          }
+        }
+        if (bestIndex >= 0) break;
+      }
+      if (bestIndex >= 0) segments.push([pointIndex, bestIndex]);
+    }
+
+    return { points, segments, luminance };
   }
 
   function createBuffers(columns, rows) {
@@ -427,6 +569,39 @@
     return bundle;
   }
 
+  function quantizeColor(style = "standard", depth = 32, r = 0, g = 0, b = 0, settings = {}) {
+    const saturationBoost = Number(settings.saturationBoost ?? 0);
+    const brightnessBoost = Number(settings.brightnessBoost ?? 0);
+    let colorR = clamp(Number(r) || 0, 0, 255);
+    let colorG = clamp(Number(g) || 0, 0, 255);
+    let colorB = clamp(Number(b) || 0, 0, 255);
+    const peak = Math.max(colorR, colorG, colorB);
+    const trough = Math.min(colorR, colorG, colorB);
+    const saturation = peak === 0 ? 0 : (peak - trough) / peak;
+    if (saturation >= 0.02) {
+      const targetSaturation = clamp(saturation * (1 + saturationBoost) + 0.06, 0, 1);
+      const chromaScale = targetSaturation / saturation;
+      colorR = clamp(peak - (peak - colorR) * chromaScale, 0, 255);
+      colorG = clamp(peak - (peak - colorG) * chromaScale, 0, 255);
+      colorB = clamp(peak - (peak - colorB) * chromaScale, 0, 255);
+    }
+    const valueScale = peak === 0 ? 0 : Math.min(255, peak * (1 + brightnessBoost)) / peak;
+    colorR = Math.round(colorR * valueScale);
+    colorG = Math.round(colorG * valueScale);
+    colorB = Math.round(colorB * valueScale);
+    const styled = styledColor(style, colorR, colorG, colorB);
+    colorR = (styled >> 16) & 255;
+    colorG = (styled >> 8) & 255;
+    colorB = styled & 255;
+    const paletteBundle = getPaletteBundle(style, depth);
+    if (paletteBundle) {
+      const lookupIndex = colorR >> 3 << 10 | colorG >> 3 << 5 | colorB >> 3;
+      const matched = paletteBundle.palette[paletteBundle.lookup[lookupIndex]];
+      return [matched[0], matched[1], matched[2]];
+    }
+    return [colorR, colorG, colorB];
+  }
+
   function chooseGlyph(e0, e1, e2, e3, thresholds) {
     const top = (e0 + e1) * 0.5;
     const bottom = (e2 + e3) * 0.5;
@@ -528,13 +703,15 @@
     const outWidth = columns * CELL_WIDTH;
 
     for (let cy = 0; cy < rows; cy += 1) {
-      const sy = cy * 2;
       for (let cx = 0; cx < columns; cx += 1) {
-        const sx = cx * 2;
-        const offset0 = (sy * width + sx) * 4;
-        const offset1 = offset0 + 4;
-        const offset2 = ((sy + 1) * width + sx) * 4;
-        const offset3 = offset2 + 4;
+        const sampleX0 = clamp(Math.floor((cx + 0.25) * width / columns), 0, width - 1);
+        const sampleX1 = clamp(Math.floor((cx + 0.75) * width / columns), 0, width - 1);
+        const sampleY0 = clamp(Math.floor((cy + 0.25) * height / rows), 0, height - 1);
+        const sampleY1 = clamp(Math.floor((cy + 0.75) * height / rows), 0, height - 1);
+        const offset0 = (sampleY0 * width + sampleX0) * 4;
+        const offset1 = (sampleY0 * width + sampleX1) * 4;
+        const offset2 = (sampleY1 * width + sampleX0) * 4;
+        const offset3 = (sampleY1 * width + sampleX1) * 4;
         const energy0 = energy(source[offset0], source[offset0 + 1], source[offset0 + 2]);
         const energy1 = energy(source[offset1], source[offset1 + 1], source[offset1 + 2]);
         const energy2 = energy(source[offset2], source[offset2 + 1], source[offset2 + 2]);
@@ -649,8 +826,11 @@
     GLYPH_SETS,
     PALETTE_DEPTHS,
     computeGrid,
+    computeSourceRect,
+    traceVectorField,
     createBuffers,
     getPaletteBundle,
+    quantizeColor,
     getGlyph,
     convertInto,
     buildAns

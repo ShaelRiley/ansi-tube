@@ -32,6 +32,8 @@
     columns: 120,
     rows: 34,
     autoRows: true,
+    crop43: false,
+    zoom43: false,
     fps: 15,
     colorPalette: "standard",
     paletteDepth: 32,
@@ -47,7 +49,13 @@
     pitchShift: 0,
     audioFilter: "off",
     audioMix: 1,
-    scanlines: false
+    scanlines: false,
+    vectorSampleScale: 4,
+    vectorEdgeDetail: 0.62,
+    vectorLineReach: 4,
+    vectorLineWidth: 1.25,
+    vectorPointSize: 1.6,
+    vectorPoints: true
   };
 
   class AnsiTube {
@@ -65,6 +73,7 @@
       this.runtimeColumns = DEFAULTS.columns;
       this.runtimeRows = DEFAULTS.rows;
       this.runtimeFps = DEFAULTS.fps;
+      this.runtimeVectorSampleScale = DEFAULTS.vectorSampleScale;
       this.buffers = null;
       this.outputImage = null;
       this.raf = 0;
@@ -100,6 +109,7 @@
       this.runtimeColumns = this.settings.columns;
       this.runtimeRows = this.settings.rows;
       this.runtimeFps = this.settings.fps;
+      this.runtimeVectorSampleScale = this.settings.vectorSampleScale;
     }
 
     toggle() {
@@ -202,13 +212,17 @@
 
     rebuildGrid() {
       if (!this.video || !this.canvas) return;
-      const aspect = this.video.videoWidth / this.video.videoHeight;
-      const grid = this.settings.autoRows
+      const fourThree = this.settings.crop43 || this.settings.zoom43;
+      const aspect = fourThree ? 4 / 3 : this.video.videoWidth / this.video.videoHeight;
+      const grid = this.settings.autoRows || fourThree
         ? Core.computeGrid(this.runtimeColumns, aspect)
         : { columns: this.runtimeColumns, rows: Math.max(10, Math.min(120, Math.round(this.runtimeRows))) };
       this.runtimeRows = grid.rows;
-      this.sampleCanvas.width = grid.columns * 2;
-      this.sampleCanvas.height = grid.rows * 2;
+      const sampleScale = this.settings.glyphSet === "vectorLines"
+        ? Math.max(2, Math.min(6, Number(this.runtimeVectorSampleScale) || 4))
+        : 2;
+      this.sampleCanvas.width = grid.columns * sampleScale;
+      this.sampleCanvas.height = grid.rows * sampleScale;
       this.canvas.width = grid.columns * Core.CELL_WIDTH;
       this.canvas.height = grid.rows * Core.CELL_HEIGHT;
       this.context.imageSmoothingEnabled = false;
@@ -230,8 +244,19 @@
 
       const started = performance.now();
       try {
+        const fourThree = this.settings.crop43 || this.settings.zoom43;
+        const sourceRect = Core.computeSourceRect(
+          this.video.videoWidth,
+          this.video.videoHeight,
+          fourThree ? 4 / 3 : null,
+          this.settings.zoom43 ? 1.25 : 1
+        );
         this.sampleContext.drawImage(
           this.video,
+          sourceRect.x,
+          sourceRect.y,
+          sourceRect.width,
+          sourceRect.height,
           0,
           0,
           this.sampleCanvas.width,
@@ -251,6 +276,7 @@
           this.buffers
         );
         if (this.settings.glyphSet === "restrictAnsi") this.context.putImageData(this.outputImage, 0, 0);
+        else if (this.settings.glyphSet === "vectorLines") this.renderVectorFrame(source.data);
         else this.renderTextFrame();
         this.recordPerformance(performance.now() - started);
         if (this.performanceSamples.length === 1) this.setStatus("Live", "ok");
@@ -279,6 +305,7 @@
         korean: '"Noto Sans CJK KR", "Noto Sans KR"',
         wingdings: '"Noto Sans Symbols 2", "Noto Sans Symbols", "Segoe UI Symbol", Symbola'
       }[this.settings.glyphSet] || '"DejaVu Sans Mono", "Noto Sans Mono"';
+      const cjk = ["chinese", "japanese", "korean"].includes(this.settings.glyphSet);
       context.font = set.type === "emoji"
         ? `${Core.CELL_HEIGHT - 1}px "Noto Color Emoji", "Segoe UI Emoji", sans-serif`
         : `${Core.CELL_HEIGHT - 2}px ${textFont}, monospace, sans-serif`;
@@ -294,7 +321,106 @@
           const y = row * Core.CELL_HEIGHT + Core.CELL_HEIGHT / 2;
           const glyph = Core.getGlyph(this.settings.glyphSet, this.buffers.glyphs[cell]);
           context.fillStyle = this.settings.colorPalette === "nativeglyph" ? "#fff" : `rgb(${r},${g},${b})`;
-          context.fillText(glyph, x, y);
+          if (cjk) context.fillText(glyph, x, y, Core.CELL_WIDTH - 1);
+          else context.fillText(glyph, x, y);
+        }
+      }
+      context.restore();
+    }
+
+    renderVectorFrame(source) {
+      const context = this.context;
+      const sampleWidth = this.sampleCanvas.width;
+      const sampleHeight = this.sampleCanvas.height;
+      const paletteBundle = Core.getPaletteBundle(this.settings.colorPalette, this.settings.paletteDepth);
+      const palette = paletteBundle?.palette || [[0, 0, 0], [255, 255, 255]];
+      const ordered = [...palette].sort((a, b) =>
+        (a[0] * 0.299 + a[1] * 0.587 + a[2] * 0.114) -
+        (b[0] * 0.299 + b[1] * 0.587 + b[2] * 0.114)
+      );
+      const background = ordered[0];
+      const foreground = ordered[ordered.length - 1];
+      const field = Core.traceVectorField(source, sampleWidth, sampleHeight, {
+        detail: this.settings.vectorEdgeDetail,
+        reach: this.settings.vectorLineReach,
+        points: this.settings.vectorPoints,
+        blackThreshold: this.settings.blackThreshold
+      });
+      const scaleX = this.canvas.width / sampleWidth;
+      const scaleY = this.canvas.height / sampleHeight;
+      const segmentBuckets = new Map();
+      const pointBuckets = new Map();
+      const backgroundKey = background[0] << 16 | background[1] << 8 | background[2];
+
+      const pointColor = (point) => {
+        const offset = point.sampleIndex * 4;
+        let color = Core.quantizeColor(
+          this.settings.colorPalette,
+          this.settings.paletteDepth,
+          source[offset],
+          source[offset + 1],
+          source[offset + 2],
+          this.settings
+        );
+        const key = color[0] << 16 | color[1] << 8 | color[2];
+        if (key === backgroundKey && ordered.length > 1) {
+          color = ordered.length === 2 ? foreground : ordered[Math.ceil((ordered.length - 1) * 0.18)];
+        }
+        return color;
+      };
+
+      const bucketFor = (map, color) => {
+        const key = color[0] << 16 | color[1] << 8 | color[2];
+        let bucket = map.get(key);
+        if (!bucket) {
+          bucket = { color, coordinates: [] };
+          map.set(key, bucket);
+        }
+        return bucket.coordinates;
+      };
+
+      for (const [startIndex, endIndex] of field.segments) {
+        const start = field.points[startIndex];
+        const end = field.points[endIndex];
+        const color = pointColor(start.strength >= end.strength ? start : end);
+        bucketFor(segmentBuckets, color).push(
+          (start.x + 0.5) * scaleX,
+          (start.y + 0.5) * scaleY,
+          (end.x + 0.5) * scaleX,
+          (end.y + 0.5) * scaleY
+        );
+      }
+
+      if (this.settings.vectorPoints) {
+        for (const point of field.points) {
+          bucketFor(pointBuckets, pointColor(point)).push(
+            (point.x + 0.5) * scaleX,
+            (point.y + 0.5) * scaleY
+          );
+        }
+      }
+
+      context.save();
+      context.fillStyle = `rgb(${background[0]},${background[1]},${background[2]})`;
+      context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      context.lineWidth = Number(this.settings.vectorLineWidth) || 1.25;
+      context.lineCap = "round";
+      context.lineJoin = "round";
+      context.globalAlpha = 0.94;
+      for (const { color, coordinates } of segmentBuckets.values()) {
+        context.strokeStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+        context.beginPath();
+        for (let index = 0; index < coordinates.length; index += 4) {
+          context.moveTo(coordinates[index], coordinates[index + 1]);
+          context.lineTo(coordinates[index + 2], coordinates[index + 3]);
+        }
+        context.stroke();
+      }
+      const pointSize = Number(this.settings.vectorPointSize) || 1.6;
+      for (const { color, coordinates } of pointBuckets.values()) {
+        context.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+        for (let index = 0; index < coordinates.length; index += 2) {
+          context.fillRect(coordinates[index] - pointSize / 2, coordinates[index + 1] - pointSize / 2, pointSize, pointSize);
         }
       }
       context.restore();
@@ -309,7 +435,11 @@
       const budget = 1000 / this.runtimeFps;
       if (average < budget * 0.82) return;
 
-      if (this.runtimeFps > 12) {
+      if (this.settings.glyphSet === "vectorLines" && this.runtimeVectorSampleScale > 2) {
+        const steps = [2, 3, 4, 6];
+        this.runtimeVectorSampleScale = [...steps].reverse().find((value) => value < this.runtimeVectorSampleScale) || 2;
+        this.rebuildGrid();
+      } else if (this.runtimeFps > 12) {
         const steps = [30, 24, 20, 15, 12];
         const lower = [...steps].reverse().find((value) => value < this.runtimeFps);
         this.runtimeFps = lower || 12;
@@ -360,6 +490,14 @@
           <label class="ansi-tube-row ansi-tube-check">
             <input data-setting="autoRows" type="checkbox">
             Keep source aspect ratio
+          </label>
+          <label class="ansi-tube-row ansi-tube-check">
+            <input data-setting="crop43" type="checkbox">
+            Crop frame to 4:3
+          </label>
+          <label class="ansi-tube-row ansi-tube-check">
+            <input data-setting="zoom43" type="checkbox">
+            Zoom into 4:3 frame
           </label>
           <div class="ansi-tube-row">
             <label for="ansi-tube-fps">ANSI FPS</label>
@@ -429,10 +567,15 @@
               <option value="2">2 colors</option>
               <option value="3">3 colors</option>
               <option value="4">4 colors</option>
+              <option value="6">6 colors</option>
               <option value="8">8 colors</option>
+              <option value="12">12 colors</option>
               <option value="16">16 colors</option>
+              <option value="24">24 colors</option>
               <option value="32">32 colors</option>
+              <option value="48">48 colors</option>
               <option value="64">64 colors</option>
+              <option value="96">96 colors</option>
               <option value="128">128 colors</option>
               <option value="256">256 colors</option>
               <option value="truecolor">True Color</option>
@@ -452,11 +595,47 @@
               <option value="korean">Korean</option>
               <option value="braille">Braille</option>
               <option value="geometric">Geometric Symbols</option>
+              <option value="vectorLines">Vector Lines</option>
               <option value="restrictedEmoji">Restricted Emoji · Native</option>
               <option value="fullEmoji">Full Emoji · Native</option>
             </select>
           </div>
           <div class="ansi-tube-hint" data-emoji-hint hidden></div>
+          <div class="ansi-tube-vector-controls" data-vector-controls hidden>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-vector-sampling">Vector sampling</label>
+              <select id="ansi-tube-vector-sampling" data-setting="vectorSampleScale">
+                <option value="2">Fast · 2×</option>
+                <option value="3">Detailed · 3×</option>
+                <option value="4">High · 4×</option>
+                <option value="6">Ultra · 6×</option>
+              </select>
+            </div>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-vector-detail">Edge detail</label>
+              <input id="ansi-tube-vector-detail" data-setting="vectorEdgeDetail" type="range" min="0" max="1" step="0.02">
+              <span class="ansi-tube-value" data-value="vectorEdgeDetail"></span>
+            </div>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-vector-reach">Line reach</label>
+              <input id="ansi-tube-vector-reach" data-setting="vectorLineReach" type="range" min="1" max="10" step="1">
+              <span class="ansi-tube-value" data-value="vectorLineReach"></span>
+            </div>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-vector-width">Line width</label>
+              <input id="ansi-tube-vector-width" data-setting="vectorLineWidth" type="range" min="0.5" max="3" step="0.25">
+              <span class="ansi-tube-value" data-value="vectorLineWidth"></span>
+            </div>
+            <div class="ansi-tube-row">
+              <label for="ansi-tube-vector-point-size">Point size</label>
+              <input id="ansi-tube-vector-point-size" data-setting="vectorPointSize" type="range" min="0.5" max="4" step="0.25">
+              <span class="ansi-tube-value" data-value="vectorPointSize"></span>
+            </div>
+            <label class="ansi-tube-row ansi-tube-check">
+              <input data-setting="vectorPoints" type="checkbox">
+              Draw pointillist nodes
+            </label>
+          </div>
           <div class="ansi-tube-row">
             <label for="ansi-tube-color">Color boost</label>
             <input id="ansi-tube-color" data-setting="saturationBoost" type="range" min="0" max="0.8" step="0.02">
@@ -539,34 +718,54 @@
         else input.value = this.settings[key];
       }
       const rows = this.panel.querySelector('[data-setting="rows"]');
-      if (rows) rows.disabled = this.settings.autoRows;
+      if (rows) this.setControlDisabled(rows, this.settings.autoRows || this.settings.crop43 || this.settings.zoom43);
       const glyphSet = Core.GLYPH_SETS[this.settings.glyphSet] || Core.GLYPH_SETS.restrictAnsi;
       const nativeEmoji = glyphSet.type === "emoji" && glyphSet.nativeColor;
+      const vectorLines = glyphSet.type === "vector";
       const palette = this.panel.querySelector('[data-setting="colorPalette"]');
       const depth = this.panel.querySelector('[data-setting="paletteDepth"]');
-      if (palette) palette.disabled = nativeEmoji;
-      if (depth) depth.disabled = nativeEmoji;
+      this.setControlDisabled(palette, nativeEmoji);
+      this.setControlDisabled(depth, nativeEmoji);
+      this.setControlDisabled(this.panel.querySelector('[data-action="ans"]'), vectorLines);
+      const vectorControls = this.panel.querySelector("[data-vector-controls]");
+      if (vectorControls) vectorControls.hidden = !vectorLines;
       const hint = this.panel.querySelector("[data-emoji-hint]");
       if (hint) {
         const cjk = ["chinese", "japanese", "korean"].includes(this.settings.glyphSet);
-        hint.hidden = glyphSet.type !== "emoji" && !cjk;
-        hint.textContent = cjk
-          ? "CJK shapes use your installed Noto/system fonts. If you see empty boxes, install the matching Noto Sans CJK font."
-          : "Native emoji keep the font’s built-in colors; palette and depth are unavailable.";
+        hint.hidden = glyphSet.type !== "emoji" && !cjk && !vectorLines;
+        hint.textContent = vectorLines
+          ? "Palette depth now controls Vector Lines from stark 2-color contours through True Color. Save PNG remains available."
+          : cjk
+            ? "CJK shapes are fitted inside each ANSI cell using your installed Noto/system fonts."
+            : "Native emoji keep the font’s built-in colors; palette and depth are unavailable.";
       }
       this.updateRuntimeLabels();
+    }
+
+    setControlDisabled(control, disabled) {
+      if (!control) return;
+      control.disabled = Boolean(disabled);
+      control.toggleAttribute("disabled", Boolean(disabled));
+      control.setAttribute("aria-disabled", String(Boolean(disabled)));
+      control.classList.toggle("ansi-tube-disabled", Boolean(disabled));
     }
 
     updateRuntimeLabels() {
       if (!this.panel) return;
       const formats = {
         columns: () => String(this.runtimeColumns),
-        rows: () => this.settings.autoRows ? `Auto ${this.runtimeRows}` : String(this.runtimeRows),
+        rows: () => this.settings.crop43 || this.settings.zoom43
+          ? `4:3 ${this.runtimeRows}`
+          : this.settings.autoRows ? `Auto ${this.runtimeRows}` : String(this.runtimeRows),
         fps: () => String(this.runtimeFps),
         saturationBoost: () => `${Math.round(this.settings.saturationBoost * 100)}%`,
         brightnessBoost: () => `${Math.round(this.settings.brightnessBoost * 100)}%`,
         blackThreshold: () => this.settings.blackThreshold.toFixed(3),
         opacity: () => `${Math.round(this.settings.opacity * 100)}%`,
+        vectorEdgeDetail: () => `${Math.round(this.settings.vectorEdgeDetail * 100)}%`,
+        vectorLineReach: () => String(this.settings.vectorLineReach),
+        vectorLineWidth: () => Number(this.settings.vectorLineWidth).toFixed(2),
+        vectorPointSize: () => Number(this.settings.vectorPointSize).toFixed(2),
         pitchShift: () => this.settings.pitchShift === 0 ? "Off" : `${this.settings.pitchShift > 0 ? "+" : ""}${this.settings.pitchShift} st`,
         audioMix: () => `${Math.round(this.settings.audioMix * 100)}%`
       };
@@ -605,7 +804,8 @@
         this.settings[key] = Number(input.value);
         this.settings.preset = "custom";
       } else {
-        this.settings[key] = key === "paletteDepth" && input.value !== "truecolor" ? Number(input.value) : input.value;
+        const numericSelect = key === "vectorSampleScale" || (key === "paletteDepth" && input.value !== "truecolor");
+        this.settings[key] = numericSelect ? Number(input.value) : input.value;
         this.settings.preset = "custom";
       }
 
@@ -616,8 +816,9 @@
       this.runtimeColumns = this.settings.columns;
       this.runtimeRows = this.settings.rows;
       this.runtimeFps = this.settings.fps;
+      this.runtimeVectorSampleScale = this.settings.vectorSampleScale;
       this.canvas.style.opacity = String(this.settings.opacity);
-      if (["columns", "rows", "autoRows", "preset"].includes(key)) this.rebuildGrid();
+      if (["columns", "rows", "autoRows", "crop43", "zoom43", "vectorSampleScale", "preset"].includes(key)) this.rebuildGrid();
       if (key === "glyphSet") this.rebuildGrid();
       if (["wowFlutter", "bitCrushMode", "pitchShift", "audioFilter", "audioMix"].includes(key)) this.applyAudioEffects();
       if (key === "scanlines" && this.scanlineOverlay) this.scanlineOverlay.hidden = !this.settings.scanlines;

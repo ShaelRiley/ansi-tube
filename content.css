@@ -108,6 +108,13 @@
   border-color: var(--ansi-pink);
 }
 
+.ansi-tube-heading button:disabled,
+.ansi-tube-actions button:disabled,
+.ansi-tube-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .ansi-tube-controls {
   margin-top: 10px;
 }
@@ -178,6 +185,18 @@
 }
 
 .ansi-tube-hint[hidden] {
+  display: none;
+}
+
+.ansi-tube-vector-controls {
+  margin: 4px 0 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 61, 154, 0.28);
+  border-radius: 5px;
+  background: rgba(255, 61, 154, 0.045);
+}
+
+.ansi-tube-vector-controls[hidden] {
   display: none;
 }
 

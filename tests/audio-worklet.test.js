@@ -40,3 +40,4 @@ const pitched = render(processor, speechLike)[0];
 assert(pitched.every(Number.isFinite));
 
 console.log("ANSI Tube audio-worklet tests passed.");
+
