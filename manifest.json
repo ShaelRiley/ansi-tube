@@ -1,12 +1,23 @@
 {
   "manifest_version": 3,
   "name": "ANSI Tube",
-  "version": "0.7.0",
-  "description": "Render YouTube as live ANSI, an original video glyph atlas, emoji, or reversible multitone vector-line art with retro palettes and audio effects.",
-  "permissions": ["storage", "activeTab"],
+  "version": "0.9.6",
+  "description": "Render YouTube with optimized glyphs, custom palettes, flexible framing, vector art, and optional video-reactive effects.",
+  "homepage_url": "https://github.com/ShaelRiley/ansi-tube",
+  "icons": {
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  },
+  "permissions": ["storage"],
   "host_permissions": ["https://www.youtube.com/*"],
   "action": {
-    "default_title": "Toggle ANSI Tube"
+    "default_title": "Toggle ANSI Tube",
+    "default_icon": {
+      "16": "assets/icon-16.png",
+      "32": "assets/icon-32.png"
+    }
   },
   "background": {
     "service_worker": "service-worker.js"
@@ -21,7 +32,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["audio-worklet.js"],
+      "resources": ["audio-worklet.js", "assets/cow-blond.png"],
       "matches": ["https://www.youtube.com/*"]
     }
   ],

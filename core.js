@@ -67,7 +67,7 @@
   const CHINESE = Array.from(" ·一丨丶丿乙亅二亠人儿入八冂冖冫几凵刀力勹匕匚十卜卩厂厶又口囗土士夂夕大女子宀寸小尢尸山巛工己巾干幺广廴廾弋弓彐彡彳心戈戶手支攴文斗斤方无日曰月木欠止歹殳毋比毛氏气水火爪父爻爿片牙牛犬玄玉瓜瓦甘生用田疋疒癶白皮皿目矛矢石示禸禾穴立竹米糸缶网羊羽老而耒耳聿肉臣自至臼舌舟艮色艸虍虫血行衣襾見角言谷豆豕豸貝赤走足身車辛辰辵邑酉釆里金長門阜隶隹雨青非面革韋韭音頁風飛食首香馬骨高髟鬥鬯鬲鬼魚鳥鹵鹿麥麻黃黍黑黹黽鼎鼓鼠鼻齊齒龍龜龠");
   const JAPANESE = Array.from(" ·。、ー・ぁあぃいぅうぇえぉおかがきぎくぐけげこござさしじすずせぜそぞただちぢっつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわをんァアィイゥウェエォオカガキギクグケゲコゴサザシジスズセゼソゾタダチヂッツヅテデトドナニヌネノハバパヒビピフブプヘベペホボポマミムメモャヤュユョヨラリルレロヮワヲンヴヵヶ日月火水木金土山川田人大小中上下左右本年時分半白黒赤青円口目耳手足花空雨海風雪星光夢愛心猫犬鳥魚龍鬼神侍忍桜");
   const KOREAN = Array.from(" ·ㆍㅡㅣㄱㄴㄷㄹㅁㅂㅅㅇㅈㅊㅋㅌㅍㅎㅏㅑㅓㅕㅗㅛㅜㅠㅡㅣ가각간갇갈감갑값갓강개객거걱건걸검겁것게겨격견결겸경고곡곤골곰곳공과관광괴교구국군굴궁권귀규그극근글금급기긴길김깊나난날남내너널네녀년노눈늘다단달담대더도독돌동되두들등라락란람랑래러레려로록론루류를리린마막만말맘맛망매머메며명모목몸무문물미민바박반발밤방배버별보복볼봄부불비빛사산살삼상새서석선설섬성세소속손솔송수숙순술숨숲스슬습시식신실심십아악안알암앙애어언얼엄업없에여역연열영오옥온올옷와완왕외요용우욱운울움웃워원위유육율은을음의이익인일임입자작잔잘잠장재저적전절점정제조족존좋주죽준줄중지직진질집차찬찰참창채처천철청초촌추축춘출충치친칠침카칼코쿠크타탁탄탈탐탑태터토통투트파판팔패퍼포표푸프피하학한할함합항해허현혈형호혹혼홀홍화환활황회효후훈훌흐희히한글대한민국서울사랑하늘바다별빛꿈");
-  const GEOMETRIC = Array.from(" ·∙•◦○◌◍◎●◇◆□▣▤▥▦▧▨▩■△▲▽▼◁◀▷▶☆★✦✧✩✪✹✺✽❖");
+  const MOSAIC = Array.from(" ▁▔▖▗▘▝░▂▌▐▀▄▚▞▃▒▙▛▜▟▅▓▆▇█");
   const BRAILLE = Array.from({ length: 256 }, (_, index) => String.fromCodePoint(0x2800 + index))
     .sort((a, b) => {
       const count = (character) => {
@@ -171,7 +171,7 @@
     japanese: { glyphs: JAPANESE, type: "text" },
     korean: { glyphs: KOREAN, type: "text" },
     braille: { glyphs: BRAILLE, type: "text" },
-    geometric: { glyphs: GEOMETRIC, type: "text" },
+    mosaic: { glyphs: MOSAIC, type: "mosaic" },
     video64: { glyphs: VIDEO_GLYPH_NAMES, masks: VIDEO_GLYPH_MASKS, type: "bitmap" },
     vectorLines: { glyphs: [""], type: "vector" },
     restrictedEmoji: { glyphs: RESTRICTED_EMOJI.map((entry) => entry[0]), colors: RESTRICTED_EMOJI, type: "emoji", nativeColor: true },
@@ -225,6 +225,17 @@
     oldtv: paletteFromHex(["#050805", "#263026", "#536253", "#8d9a88", "#c8cfbd", "#f2ead0"]),
     eighties: paletteFromHex(["#080018", "#28105c", "#7b2cbf", "#ff2aa1", "#ff6b35", "#ffd166", "#00f5d4", "#00bbf9", "#f8f9fa"]),
     sunburst: paletteFromHex(["#090000", "#4a0000", "#9f1800", "#e54b00", "#ff8c00", "#ffd000", "#fff3a0", "#ffffff"]),
+    moonburst: paletteFromHex(["#03050d", "#0b1638", "#25246a", "#554d9c", "#9296c9", "#d7d8e8", "#fff4cf", "#ffffff"]),
+    mooburst: paletteFromHex(["#050505", "#1b1712", "#3b261c", "#6b4127", "#34723e", "#b9802f", "#e5a75b", "#f0aebc", "#f5e8cf", "#ffffff"]),
+    ruby: paletteFromHex(["#080005", "#320014", "#670022", "#a50735", "#db2348", "#ff5a70", "#ffadb6", "#fff4f3"]),
+    enchantedforest: paletteFromHex(["#020806", "#082619", "#0d4b2b", "#147345", "#239a64", "#57c98b", "#a9edbd", "#efffe8"]),
+    nightburst: paletteFromHex(["#01020b", "#050b28", "#0d1d55", "#183d82", "#2769ad", "#559bd2", "#a7cce9", "#edf7ff"]),
+    snowburst: paletteFromHex(["#071018", "#163247", "#2d5f78", "#5a91a8", "#91bfd0", "#c6e1e9", "#edf8fb", "#ffffff"]),
+    cyberburst: paletteFromHex(["#08000f", "#260046", "#620078", "#b00083", "#ef167f", "#ff5964", "#00e5d2", "#eaffff"]),
+    grapeburst: paletteFromHex(["#09000f", "#27003d", "#520069", "#7e168e", "#a941ad", "#d176cc", "#edb8e7", "#fff1ff"]),
+    candyburst: paletteFromHex(["#160713", "#4f1742", "#8f326b", "#d15188", "#ff7da0", "#ffa9bd", "#ffd2dc", "#fff7f4"]),
+    chromaburst: paletteFromHex(["#050008", "#230071", "#7a008f", "#d00073", "#f43b37", "#ff9b18", "#d9ef32", "#b9ffff"]),
+    soulburst: paletteFromHex(["#07030c", "#25123b", "#50245e", "#81396f", "#bd566f", "#e88968", "#f4c982", "#fff8dc"]),
     space: paletteFromHex(["#000006", "#080020", "#13004c", "#281080", "#4c2aa8", "#1b4fd8", "#138fc9", "#a75ee8", "#f0d8ff", "#ffffff"]),
     psychedelic: paletteFromHex(["#120018", "#ff007f", "#ff3d00", "#ffe600", "#40ff00", "#00ffd5", "#006eff", "#8a00ff", "#ffffff"]),
     caveman: paletteFromHex(["#080604", "#2b2117", "#513820", "#76512d", "#9a6a3a", "#b88a58", "#6a5d34", "#394324", "#b54e2b", "#d2b48c"]),
@@ -382,6 +393,84 @@
       columns: safeColumns,
       rows: Math.max(1, Math.round(safeColumns / safeAspect / 2))
     };
+  }
+
+  function getEffectTuning(value, style = "adaptive") {
+    const control = clamp(Number(value) || 0, 0, 1);
+    const level = 0.12 + 0.88 * Math.pow(control, 1.28);
+    const styleAdjustments = {
+      adaptive: { luminance: 0, delta: 0, edge: 0, eventBase: 42, eventRange: 27 },
+      phosphor: { luminance: -8, delta: -3, edge: 0, eventBase: 35, eventRange: 24 },
+      auras: { luminance: -12, delta: 0, edge: -8, eventBase: 40, eventRange: 24 },
+      outline: { luminance: -4, delta: 0, edge: 0, eventBase: 44, eventRange: 26 }
+    }[style] || { luminance: 0, delta: 0, edge: 0, eventBase: 42, eventRange: 27 };
+    const mixed = style === "adaptive";
+    const mixScale = mixed ? 0.82 : 1;
+    return {
+      control,
+      level,
+      hotspotLuminance: 191 - 43 * level + styleAdjustments.luminance,
+      eventLuminance: 167 - 43 * level + styleAdjustments.luminance,
+      hotspotDelta: 21 - 12 * level + styleAdjustments.delta,
+      hotspotEdge: 118 - 64 * level + styleAdjustments.edge,
+      eventDelta: styleAdjustments.eventBase - styleAdjustments.eventRange * level,
+      outlineEdge: 128 - 68 * level,
+      maxAuras: 1 + Math.round(2 * level),
+      maxOutlines: mixed ? 32 + Math.round(40 * level) : 36 + Math.round(52 * level),
+      maxParticles: mixed ? 10 + Math.round(30 * level) : 12 + Math.round(36 * level),
+      particleSpawn: 1 + Math.round(5 * level),
+      rayCount: 3 + Math.round((mixed ? 3 : 4) * level),
+      radiusScale: 0.65 + 0.70 * level,
+      auraOpacity: (0.08 + 0.20 * level) * mixScale,
+      bloomOpacity: (0.18 + 0.38 * level) * (mixed ? 0.84 : 1),
+      rayOpacity: (0.035 + 0.085 * level) * (mixed ? 0.80 : 1),
+      outlineDarkOpacity: (0.16 + 0.36 * level) * (mixed ? 0.78 : 1),
+      outlineLightOpacity: (0.10 + 0.28 * level) * (mixed ? 0.78 : 1),
+      particleOpacity: (0.24 + 0.38 * level) * mixScale,
+      lineWidth: 0.65 + 0.90 * level,
+      trailFade: style === "phosphor" ? 0.14 - 0.07 * level : 0.30 - 0.12 * level
+    };
+  }
+
+  function getCowTiming(now, firstAppearance = false, randomValue = Math.random()) {
+    const safeNow = Math.max(0, Number(now) || 0);
+    const random = clamp(Number(randomValue) || 0, 0, 1);
+    if (firstAppearance) {
+      return {
+        eligibleAt: safeNow + 7000 + 7000 * random,
+        forceAt: safeNow + 22000
+      };
+    }
+    const eligibleAt = safeNow + 45000 + 25000 * random;
+    return {
+      eligibleAt,
+      forceAt: eligibleAt + 30000
+    };
+  }
+
+  function isCowMoment(metrics = {}) {
+    const mean = Number(metrics.mean) || 0;
+    const motion = Number(metrics.motion) || 0;
+    const edge = Number(metrics.edge) || 0;
+    return mean > 24 && mean < 236 && motion < 46 && edge < 180;
+  }
+
+  function resolveFrameSettings(settings = {}) {
+    const square = settings.crop11 || settings.zoom11 || settings.squash11;
+    const fourThree = !square && (settings.crop43 || settings.zoom43 || settings.squash43);
+    if (square) return {
+      aspect: 1,
+      label: "1:1",
+      squash: Boolean(settings.squash11),
+      zoom: settings.zoom11 ? 1.25 : 1
+    };
+    if (fourThree) return {
+      aspect: 4 / 3,
+      label: "4:3",
+      squash: Boolean(settings.squash43),
+      zoom: settings.zoom43 ? 1.25 : 1
+    };
+    return { aspect: null, label: "", squash: false, zoom: 1 };
   }
 
   function computeSourceRect(width, height, targetAspectRatio, zoom = 1) {
@@ -612,7 +701,12 @@
 
     if (style === "nativeglyph") return Math.round(r) << 16 | Math.round(g) << 8 | Math.round(b);
 
-    if (["sunburst", "space", "caveman", "oceania", "metallics", "silvergold", "oldtv", "virtualb", "gbdmg", "apple2green"].includes(style)) {
+    if ([
+      "sunburst", "moonburst", "mooburst", "ruby", "enchantedforest", "nightburst", "snowburst",
+      "cyberburst", "grapeburst", "candyburst", "chromaburst", "soulburst",
+      "space", "caveman", "oceania", "metallics", "silvergold", "oldtv",
+      "virtualb", "gbdmg", "apple2green"
+    ].includes(style)) {
       const palette = FIXED_PALETTES[style];
       const position = luminance / 255 * (palette.length - 1);
       const low = palette[Math.floor(position)];
@@ -879,7 +973,7 @@
     const vertical = Math.abs(top - bottom);
     const horizontal = Math.abs(left - right);
     if (Math.max(vertical, horizontal) > thresholds.edge) {
-      const directional = set.type === "ansi"
+      const directional = set.type === "ansi" || set.type === "mosaic"
         ? (vertical >= horizontal ? (top > bottom ? "▀" : "▄") : (left > right ? "▌" : "▐"))
         : (vertical >= horizontal ? (top > bottom ? "^" : "_") : (left > right ? "(" : ")"));
       const directionalIndex = set.glyphs.indexOf(directional);
@@ -1221,6 +1315,10 @@
     PALETTE_DEPTHS,
     computeGrid,
     computeSourceRect,
+    getEffectTuning,
+    getCowTiming,
+    isCowMoment,
+    resolveFrameSettings,
     traceVectorField,
     createBuffers,
     getPaletteBundle,
