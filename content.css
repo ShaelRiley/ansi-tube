@@ -33,7 +33,7 @@
   height: 100%;
   object-fit: contain;
   image-rendering: auto;
-  mix-blend-mode: screen;
+  mix-blend-mode: normal;
   pointer-events: none;
 }
 

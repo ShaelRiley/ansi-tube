@@ -4,6 +4,50 @@
   const Core = globalThis.AnsiTubeCore;
   if (!Core) return;
 
+  function hasExtensionContext() {
+    try {
+      return Boolean(chrome?.runtime?.id);
+    } catch {
+      return false;
+    }
+  }
+
+  function isInvalidatedContextError(error) {
+    return !hasExtensionContext() || /extension context invalidated/i.test(String(error?.message || error || ""));
+  }
+
+  async function readStoredSettings() {
+    if (!hasExtensionContext()) return {};
+    try {
+      return await chrome.storage.local.get(null);
+    } catch (error) {
+      if (isInvalidatedContextError(error)) return {};
+      throw error;
+    }
+  }
+
+  async function writeStoredSettings(values) {
+    if (!hasExtensionContext()) return false;
+    try {
+      await chrome.storage.local.set(values);
+      return true;
+    } catch (error) {
+      if (isInvalidatedContextError(error)) return false;
+      console.warn("ANSI Tube could not save local settings.", error);
+      return false;
+    }
+  }
+
+  function localResourceUrl(path) {
+    if (!hasExtensionContext()) return "";
+    try {
+      return chrome.runtime.getURL(path);
+    } catch (error) {
+      if (isInvalidatedContextError(error)) return "";
+      throw error;
+    }
+  }
+
   const PRESETS = {
     potato: { columns: 80, fps: 12, colorPalette: "standard", paletteDepth: 8, glyphSet: "restrictAnsi", autoRows: true },
     balanced: { columns: 120, fps: 15, colorPalette: "standard", paletteDepth: 32, glyphSet: "restrictAnsi", autoRows: true },
@@ -89,6 +133,7 @@
       this.cowImage = null;
       this.cowImageState = "idle";
       this.cowAudioContext = null;
+      this.cowAudioSuspendTimer = 0;
       this.effectPrevious = null;
       this.effectCurrent = null;
       this.effectParticles = [];
@@ -127,7 +172,7 @@
     }
 
     async loadSettings() {
-      const saved = await chrome.storage.local.get(null);
+      const saved = await readStoredSettings();
       this.settings = { ...DEFAULTS, ...saved };
       const migrated = {};
       if (this.sessionPanelCollapsed !== null) this.settings.panelCollapsed = this.sessionPanelCollapsed;
@@ -149,6 +194,17 @@
         }
         migrated.settingsVersion = 9;
       }
+      const normalizedAudio = {
+        wowFlutter: this.settings.wowFlutter === true,
+        bitCrushMode: ["off", "bit1", "bit2"].includes(this.settings.bitCrushMode) ? this.settings.bitCrushMode : "off",
+        pitchShift: Math.max(-4, Math.min(4, Math.round(Number(this.settings.pitchShift) || 0))),
+        audioFilter: ["off", "am", "telephone", "underwater"].includes(this.settings.audioFilter) ? this.settings.audioFilter : "off",
+        audioMix: Math.max(0, Math.min(1, Number.isFinite(Number(this.settings.audioMix)) ? Number(this.settings.audioMix) : 1))
+      };
+      for (const [key, value] of Object.entries(normalizedAudio)) {
+        if (key in saved && saved[key] !== value) migrated[key] = value;
+        this.settings[key] = value;
+      }
       const retiredPalettes = { teal: "cyan", phosphor: "green", nightvision: "green" };
       this.settings.colorPalette = retiredPalettes[this.settings.colorPalette] || this.settings.colorPalette;
       const retiredGlyphSets = { restrictedEmojiTinted: "wingdings", fullEmojiTinted: "wingdings", geometric: "mosaic" };
@@ -157,7 +213,13 @@
       this.runtimeRows = this.settings.rows;
       this.runtimeFps = this.settings.fps;
       this.runtimeVectorSampleScale = this.settings.vectorSampleScale;
-      if (Object.keys(migrated).length) await chrome.storage.local.set(migrated);
+      if (Object.keys(migrated).length) await writeStoredSettings(migrated);
+    }
+
+    persistSettings(values) {
+      void writeStoredSettings(values).then((saved) => {
+        if (!saved && this.panel) this.setStatus("Extension updated — refresh this YouTube tab to reconnect.", "error");
+      });
     }
 
     getFrameSettings() {
@@ -237,6 +299,7 @@
     stop({ preserveIntent = false } = {}) {
       if (!preserveIntent) this.desiredActive = false;
       this.bypassAudioGraph();
+      this.suspendCowAudio();
       this.active = false;
       cancelAnimationFrame(this.raf);
       this.canvas?.remove();
@@ -847,6 +910,11 @@
 
     ensureCowImage() {
       if (this.cowImageState !== "idle") return;
+      const imageUrl = localResourceUrl("assets/cow-blond.png");
+      if (!imageUrl) {
+        this.cowImageState = "error";
+        return;
+      }
       this.cowImageState = "loading";
       const image = new Image();
       image.crossOrigin = "anonymous";
@@ -859,7 +927,7 @@
         this.cowImage = null;
         this.cowImageState = "error";
       };
-      image.src = chrome.runtime.getURL("assets/cow-blond.png");
+      image.src = imageUrl;
     }
 
     drawCowImage(context, x, y, scale, alpha, mirror) {
@@ -869,17 +937,38 @@
       context.translate(x, y);
       context.scale(mirror ? -1 : 1, 1);
       context.globalAlpha = alpha;
-      context.globalCompositeOperation = "screen";
+      context.globalCompositeOperation = "source-over";
       context.drawImage(this.cowImage, -size / 2, -size / 2, size, size);
       context.restore();
     }
 
     async prepareCowAudio() {
+      window.clearTimeout(this.cowAudioSuspendTimer);
+      this.cowAudioSuspendTimer = 0;
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) return null;
       if (!this.cowAudioContext || this.cowAudioContext.state === "closed") this.cowAudioContext = new AudioContextClass();
       if (this.cowAudioContext.state === "suspended") await this.cowAudioContext.resume();
       return this.cowAudioContext.state === "running" ? this.cowAudioContext : null;
+    }
+
+    scheduleCowAudioSuspend(delayMilliseconds = 250) {
+      window.clearTimeout(this.cowAudioSuspendTimer);
+      this.cowAudioSuspendTimer = window.setTimeout(() => {
+        this.cowAudioSuspendTimer = 0;
+        if (this.cowAudioContext?.state === "running") this.cowAudioContext.suspend().catch(() => {});
+      }, Math.max(0, delayMilliseconds));
+    }
+
+    suspendCowAudio() {
+      window.clearTimeout(this.cowAudioSuspendTimer);
+      this.cowAudioSuspendTimer = 0;
+      if (this.cowAudioContext?.state === "running") this.cowAudioContext.suspend().catch(() => {});
+    }
+
+    async primeCowAudio() {
+      const context = await this.prepareCowAudio();
+      if (context) this.scheduleCowAudioSuspend(250);
     }
 
     async playCowMoo(horizontalPosition = 0.5) {
@@ -962,6 +1051,7 @@
       harmonic.stop(now + duration);
       overtone.stop(now + duration);
       vibrato.stop(now + duration);
+      this.scheduleCowAudioSuspend((duration + 0.25) * 1000);
       return true;
     }
 
@@ -1003,7 +1093,7 @@
       panel.setAttribute("aria-label", "ANSI Tube controls");
       panel.innerHTML = `
         <div class="ansi-tube-heading">
-          <span class="ansi-tube-brand">ANSI TUBE <small>v0.9.6</small></span>
+          <span class="ansi-tube-brand">ANSI TUBE <small>v0.9.9</small></span>
           <div class="ansi-tube-heading-actions">
             <button type="button" data-action="collapse" aria-label="${this.settings.panelCollapsed ? "Expand" : "Collapse"} controls" aria-expanded="${String(!this.settings.panelCollapsed)}" title="${this.settings.panelCollapsed ? "Expand" : "Collapse"} controls">${this.settings.panelCollapsed ? "+" : "−"}</button>
             <button type="button" data-action="close" aria-label="Exit ANSI Tube" title="Exit ANSI Tube">×</button>
@@ -1140,7 +1230,7 @@
       this.panelIdleTimer = window.setTimeout(() => {
         this.panelIdleTimer = 0;
         if (!this.panel || !this.settings.panelCollapsed) return;
-        if (this.panel.matches(":hover") || this.panel.contains(document.activeElement)) {
+        if (this.panel.contains(document.activeElement)) {
           this.scheduleCollapsedPanelFade();
           return;
         }
@@ -1254,8 +1344,9 @@
       if (action === "collapse") {
         this.settings.panelCollapsed = !this.settings.panelCollapsed;
         this.sessionPanelCollapsed = this.settings.panelCollapsed;
-        chrome.storage.local.set({ panelCollapsed: this.settings.panelCollapsed });
+        this.persistSettings({ panelCollapsed: this.settings.panelCollapsed });
         this.syncControls();
+        if (event.detail > 0) event.target.closest("button")?.blur();
         this.revealCollapsedPanel();
       }
       if (action === "png") this.exportPng();
@@ -1322,17 +1413,19 @@
           this.effectParticles.length = 0;
           this.effectHasHistory = false;
           this.resetCowCameo(true);
+          this.suspendCowAudio();
         }
       }
       if (key === "cowCameo" && !this.settings.cowCameo) {
         this.resetCowCameo(true);
+        this.suspendCowAudio();
       }
       if ((key === "colorPalette" && this.settings.colorPalette === "mooburst") || (key === "cowCameo" && this.settings.cowCameo)) {
         this.ensureCowImage();
       }
-      if (key === "cowCameo" && this.settings.cowCameo) this.prepareCowAudio().catch(() => {});
+      if (key === "cowCameo" && this.settings.cowCameo) this.primeCowAudio().catch(() => {});
       this.performanceSamples.length = 0;
-      chrome.storage.local.set(this.settings);
+      this.persistSettings(this.settings);
       this.syncControls();
     }
 
@@ -1417,8 +1510,10 @@
 
       const AudioContextClass = window.AudioContext || window.webkitAudioContext;
       if (!AudioContextClass) throw new Error("Web Audio is unavailable in this browser.");
+      const workletUrl = localResourceUrl("audio-worklet.js");
+      if (!workletUrl) throw new Error("ANSI Tube was updated; refresh this YouTube tab to reconnect.");
       const context = new AudioContextClass();
-      await context.audioWorklet.addModule(chrome.runtime.getURL("audio-worklet.js"));
+      await context.audioWorklet.addModule(workletUrl);
       const processor = new AudioWorkletNode(context, "ansi-tube-audio", {
         numberOfInputs: 1,
         numberOfOutputs: 1,
@@ -1463,25 +1558,41 @@
       return graph;
     }
 
-    bypassAudioGraph() {
-      const graph = this.video ? this.audioByVideo.get(this.video) : null;
+    setAudioGain(parameter, target, now, timeConstant = 0.015) {
+      if (typeof parameter.cancelAndHoldAtTime === "function") parameter.cancelAndHoldAtTime(now);
+      else {
+        const current = parameter.value;
+        parameter.cancelScheduledValues(now);
+        parameter.setValueAtTime(current, now);
+      }
+      parameter.setTargetAtTime(target, now, timeConstant);
+    }
+
+    bypassAudioGraph(graph = this.video ? this.audioByVideo.get(this.video) : null) {
       if (!graph) return;
       const now = graph.context.currentTime;
-      graph.dry.gain.setTargetAtTime(1, now, 0.015);
-      graph.wet.gain.setTargetAtTime(0, now, 0.015);
+      this.setAudioGain(graph.dry.gain, 1, now);
+      this.setAudioGain(graph.wet.gain, 0, now);
+    }
+
+    hasAudioEffects() {
+      return Boolean(
+        this.settings.wowFlutter ||
+        this.settings.bitCrushMode !== "off" ||
+        this.settings.pitchShift !== 0 ||
+        this.settings.audioFilter !== "off"
+      );
     }
 
     async applyAudioEffects() {
-      const enabled = this.settings.wowFlutter || this.settings.bitCrushMode !== "off" || this.settings.pitchShift !== 0 || this.settings.audioFilter !== "off";
       try {
-        if (!enabled) {
+        if (!this.hasAudioEffects()) {
           this.bypassAudioGraph();
           return;
         }
         const graph = await this.createAudioGraph();
-        if (!this.active || this.video !== graph.video) {
-          graph.dry.gain.value = 1;
-          graph.wet.gain.value = 0;
+        if (!this.active || this.video !== graph.video || !this.hasAudioEffects()) {
+          this.bypassAudioGraph(graph);
           return;
         }
         await graph.context.resume();
@@ -1504,11 +1615,9 @@
         graph.flutterDelay.delayTime.setTargetAtTime(this.settings.wowFlutter ? 0.0012 : 0, now, 0.012);
         graph.wowDepth.gain.setTargetAtTime(this.settings.wowFlutter ? 0.0032 : 0, now, 0.012);
         graph.flutterDepth.gain.setTargetAtTime(this.settings.wowFlutter ? 0.00048 : 0, now, 0.012);
-        graph.dry.gain.cancelScheduledValues(now);
-        graph.wet.gain.cancelScheduledValues(now);
         const mix = Math.max(0, Math.min(1, Number(this.settings.audioMix)));
-        graph.dry.gain.setTargetAtTime(1 - mix, now, 0.015);
-        graph.wet.gain.setTargetAtTime(mix, now, 0.015);
+        this.setAudioGain(graph.dry.gain, 1 - mix, now);
+        this.setAudioGain(graph.wet.gain, mix, now);
         this.audioGraph = graph;
         const effects = [
           this.settings.wowFlutter && "wow + flutter",

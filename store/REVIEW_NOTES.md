@@ -10,6 +10,8 @@ Stores user-selected rendering, framing, reactive-effect, audio-effect, export, 
 
 ANSI Tube's single purpose requires a content script on YouTube to locate the user-selected HTML video element, sample decoded frames locally, draw the converted overlay, and optionally route that video's audio through local Web Audio effects. The extension does not run on other sites and does not transmit page, video, audio, or browsing data.
 
+When all optional audio treatments are off, ANSI Tube keeps the processed path muted. The separate locally synthesized cow-sound context suspends after playback and when the feature or extension is disabled.
+
 ## Remote code declaration
 
 Select: **No, I am not using remote code.**
@@ -31,7 +33,7 @@ No account or credentials are required beyond ordinary public YouTube access.
 3. Confirm the converted canvas and controls appear over the video.
 4. Collapse the controls; stop moving the pointer for 2.2 seconds and confirm the compact bar fades. Move the pointer over the player and confirm it returns.
 5. Under Look & Glyphs, choose MooBurst🐄.
-6. Choose MooBurst, then open Reactive Effects, enable effects, and enable Blond cow cameos + moo. The unlocked effect remains active when another palette is selected; turning it off outside MooBurst hides the secret control again. Use Test moo to verify synthesized audio immediately. The first bundled cow cameo appears within about 22 seconds and later recurs within a bounded 75–100-second window; its PNG, compositing, timing analysis, and synthesized audio are fully local.
+6. Choose MooBurst, then open Reactive Effects, enable effects, and enable Blond cow cameos + moo. The unlocked effect remains active and visibly composites on both dark and bright palettes when another palette is selected; turning it off outside MooBurst hides the secret control again. Use Test moo to verify synthesized audio immediately. The first bundled cow cameo appears within about 22 seconds and later recurs within a bounded 75–100-second window; its transparent PNG, compositing, timing analysis, and synthesized audio are fully local.
 7. Test 4:3 and 1:1 framing, PNG export, and Alt+Shift+A shutdown.
 
 ## Scope and independence
